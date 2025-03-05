@@ -37,7 +37,7 @@ public abstract class WindowSetup {
     }
 
     static void setFlag(String name) {
-        if (name.equalsIgnoreCase("flagNotFocusable") || name.equalsIgnoreCase("defaultFlag")) 
+        if (name.equalsIgnoreCase("flagNotFocusable") || name.equalsIgnoreCase("defaultFlag")) {
             flag = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         }
         if (name.equalsIgnoreCase("flagNotTouchable") || name.equalsIgnoreCase("clickThrough")) {
