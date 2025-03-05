@@ -349,9 +349,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
         if (Build.VERSION.SDK_INT >= 34) {
             int foregroundType = 0;
             try {
+                // Tenta acessar a constante via reflection.
                 foregroundType = (int) ServiceInfo.class.getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
             } catch (Exception e) {
                 e.printStackTrace();
+                // Se não encontrar o campo, permanece com o valor 0 (fallback)
             }
             startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
         } else {
