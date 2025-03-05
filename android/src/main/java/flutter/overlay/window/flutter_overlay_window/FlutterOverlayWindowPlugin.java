@@ -168,7 +168,7 @@ public class FlutterOverlayWindowPlugin implements
 
     @Override
     public void onMessage(@Nullable Object message, @NonNull BasicMessageChannel.Reply reply) {
-        BasicMessageChannel overlayMessageChannel = new BasicMessageChannel(
+        BasicMessageChannel overlayMessageChannel = new BasicMessageChannel<Object>(
                 FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG)
                         .getDartExecutor(),
                 OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
