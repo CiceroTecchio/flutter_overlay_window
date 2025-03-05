@@ -154,15 +154,23 @@ public class OverlayService extends Service implements View.OnTouchListener {
         });
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { // Android 11+
+            WindowMetrics metrics = windowManager.getCurrentWindowMetrics();
+            Insets insets = metrics.getWindowInsets()
+                .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars());
+            int w = metrics.getBounds().width() - insets.left - insets.right;
+            int h = metrics.getBounds().height() - insets.top - insets.bottom;
+            szWindow.set(w, h);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) { // Android 3.0+
             windowManager.getDefaultDisplay().getSize(szWindow);
-        } else {
+        } else { // Android < 3.0
             DisplayMetrics displaymetrics = new DisplayMetrics();
             windowManager.getDefaultDisplay().getMetrics(displaymetrics);
             int w = displaymetrics.widthPixels;
             int h = displaymetrics.heightPixels;
             szWindow.set(w, h);
         }
+
         int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : startX;
         int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : startY;
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
