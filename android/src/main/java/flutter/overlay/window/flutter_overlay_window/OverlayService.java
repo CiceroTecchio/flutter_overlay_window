@@ -198,14 +198,24 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
     private int screenHeight() {
-        Display display = windowManager.getDefaultDisplay();
-        DisplayMetrics dm = new DisplayMetrics();
-        display.getRealMetrics(dm);
-        return inPortrait() ?
-                dm.heightPixels + statusBarHeightPx() + navigationBarHeightPx()
-                :
-                dm.heightPixels + statusBarHeightPx();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { // Android 11+
+            WindowMetrics metrics = windowManager.getCurrentWindowMetrics();
+            // Obtém a altura total do display (incluindo áreas de sistema)
+            int realHeight = metrics.getBounds().height();
+            // Replica a lógica original (embora você possa ajustar conforme a necessidade)
+            return inPortrait() 
+                    ? realHeight + statusBarHeightPx() + navigationBarHeightPx()
+                    : realHeight + statusBarHeightPx();
+        } else { // Versões antigas
+            Display display = windowManager.getDefaultDisplay();
+            DisplayMetrics dm = new DisplayMetrics();
+            display.getRealMetrics(dm);
+            return inPortrait() 
+                    ? dm.heightPixels + statusBarHeightPx() + navigationBarHeightPx()
+                    : dm.heightPixels + statusBarHeightPx();
+        }
     }
+
 
     private int statusBarHeightPx() {
         if (mStatusBarHeight == -1) {
