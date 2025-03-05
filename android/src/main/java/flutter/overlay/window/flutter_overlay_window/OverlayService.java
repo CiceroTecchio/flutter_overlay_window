@@ -331,15 +331,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 .setContentIntent(pendingIntent)
                 .setVisibility(WindowSetup.notificationVisibility)
                 .build();
-          if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                    OverlayConstants.NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        if (Build.VERSION.SDK_INT >= 34) {
+            int foregroundType = 0;
+            try {
+                foregroundType = (int) ServiceInfo.class.getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
         } else {
-            startForeground(
-                    OverlayConstants.NOTIFICATION_ID,
-                    notification);
+            startForeground(OverlayConstants.NOTIFICATION_ID, notification);
         }
         instance = this;
     }
