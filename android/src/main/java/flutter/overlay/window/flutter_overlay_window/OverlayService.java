@@ -147,7 +147,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
         });
          if(overlayMessageChannel == null) {
-             overlayMessageChannel = new BasicMessageChannel(engine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+             overlayMessageChannel = new BasicMessageChannel<Object>(engine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
          }
         overlayMessageChannel.setMessageHandler((message, reply) -> {
             WindowSetup.messenger.send(message);
