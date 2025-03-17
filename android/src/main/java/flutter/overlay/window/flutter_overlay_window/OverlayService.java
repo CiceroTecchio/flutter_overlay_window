@@ -101,7 +101,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // Verifica se o intent é nulo
         if (null == intent || null == intent.getAction ()) {
             String source = null == intent ? "intent" : "action";
-            Log.e (TAG, source + " was null, flags=" + flags + " bits=" + Integer.toBinaryString (flags));
             return START_STICKY;
         }
         mResources = getApplicationContext().getResources();
