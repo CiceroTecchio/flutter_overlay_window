@@ -353,7 +353,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
                 .setContentTitle(WindowSetup.overlayTitle)
                 .setContentText(WindowSetup.overlayContent)
-               .setSmallIcon(notifyIcon == 0 ? R.drawable.ic_launcher_notification : notifyIcon)
+               .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
                 .setContentIntent(pendingIntent)
                 .setVisibility(WindowSetup.notificationVisibility)
                 .build();
