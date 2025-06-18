@@ -387,7 +387,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     private int getDrawableResourceId(String resType, String name) {
-        return getApplicationContext().getResources().getIdentifier(String.format("ic_%s", name), resType, getApplicationContext().getPackageName());
+        return getApplicationContext().getResources().getIdentifier(name, resType, getApplicationContext().getPackageName());
     }
 
     private int dpToPx(int dp) {
