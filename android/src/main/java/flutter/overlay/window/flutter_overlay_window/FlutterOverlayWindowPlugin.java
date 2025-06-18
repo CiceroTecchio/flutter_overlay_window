@@ -190,5 +190,35 @@ public class FlutterOverlayWindowPlugin implements
         }
         return false;
     }
+        
+private void createNotificationChannelWithSound() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        String channelId = "high_importance_channel";
+        String channelName = "Canal importante";
 
+        Uri soundUri = Uri.parse("android.resource://" + context.getPackageName() + "/raw/notification");
+
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+
+        NotificationChannel channel = new NotificationChannel(
+                channelId,
+                channelName,
+                NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.setDescription("Notificações com som personalizado");
+        channel.enableLights(true);
+        channel.enableVibration(true);
+        channel.setSound(soundUri, audioAttributes);
+
+        NotificationManager notificationManager =
+                (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+
+        // Exclui o canal antigo para garantir a atualização de som
+        notificationManager.deleteNotificationChannel(channelId);
+        notificationManager.createNotificationChannel(channel);
+    }
+}
 }
