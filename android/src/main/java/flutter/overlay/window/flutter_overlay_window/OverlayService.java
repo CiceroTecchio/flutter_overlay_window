@@ -86,14 +86,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @Override
     public void onDestroy() {
         Log.d("OverLay", "Destroying the overlay window service");
+        
         if (windowManager != null) {
             windowManager.removeView(flutterView);
             windowManager = null;
             flutterView.detachFromFlutterEngine();
             flutterView = null;
         }
-
-        if (flutterEngine != null) {
+        
+        if (engine != null) {
             try{
                 Log.d("OverLay", "Parando som do ringtone");
                 new MethodChannel(engine.getDartExecutor(),"flutter_ringtone_player").invokeMethod("stop", null);
