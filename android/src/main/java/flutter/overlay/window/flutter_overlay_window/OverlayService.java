@@ -92,6 +92,18 @@ public class OverlayService extends Service implements View.OnTouchListener {
             flutterView.detachFromFlutterEngine();
             flutterView = null;
         }
+
+        if (flutterEngine != null) {
+            try{
+                Log.d("OverLay", "Parando som do ringtone");
+                new MethodChannel(engine.getDartExecutor(),"flutter_ringtone_player").invokeMethod("stop", null);
+            } catch (Exception e) {
+                Log.d("OverLay", "Falha ao parar som do ringtone");
+                e.printStackTrace();
+                // Se não encontrar o campo, permanece com o valor 0 (fallback)
+            }
+        }
+        
         isRunning = false;
         NotificationManager notificationManager = (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
         notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
