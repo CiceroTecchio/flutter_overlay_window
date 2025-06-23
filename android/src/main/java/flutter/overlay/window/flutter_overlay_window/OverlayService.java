@@ -98,7 +98,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
                 if (engine != null) {
                     Log.d("OverLay", "Parando som do ringtone");
-                    new MethodChannel(engine.getDartExecutor(),"flutter_ringtone_player").invokeMethod("stop", null);
+                    new MethodChannel(engine.getDartExecutor(), "my_custom_overlay_channel").invokeMethod("onOverlayClosed", null);
                 }
             } catch (Exception e) {
                 Log.d("OverLay", "Falha ao parar som do ringtone");
