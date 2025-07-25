@@ -111,6 +111,34 @@ public class FlutterOverlayWindowPlugin implements
             intent.putExtra("startY", startY);
             context.startService(intent);
             result.success(null);
+        } else if (call.method.equals("showOverlayWithSoundAndLockscreen")) {
+            if (!checkOverlayPermission()) {
+                result.error("PERMISSION", "overlay permission is not enabled", null);
+                return;
+            }
+        
+            // Reaproveita o código padrão do showOverlay
+            Integer height = call.argument("height");
+            Integer width = call.argument("width");
+            String alignment = call.argument("alignment");
+            String overlayTitle = call.argument("overlayTitle");
+            String overlayContent = call.argument("overlayContent");
+        
+            WindowSetup.width = width != null ? width : -1;
+            WindowSetup.height = height != null ? height : -1;
+            WindowSetup.enableDrag = false;
+            WindowSetup.setGravityFromAlignment(alignment != null ? alignment : "center");
+            WindowSetup.setFlag("flagShowWhenLocked"); // ⚠️ Você vai definir isso abaixo
+            WindowSetup.overlayTitle = overlayTitle;
+            WindowSetup.overlayContent = overlayContent == null ? "" : overlayContent;
+            WindowSetup.setNotificationVisibility("visibilityPublic");
+        
+            final Intent intent = new Intent(context, OverlayService.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            context.startService(intent);
+            result.success(null);
+
         } else if (call.method.equals("isOverlayActive")) {
             result.success(OverlayService.isRunning);
             return;
