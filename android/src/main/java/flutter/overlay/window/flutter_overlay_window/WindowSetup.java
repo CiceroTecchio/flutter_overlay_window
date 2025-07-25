@@ -47,6 +47,12 @@ public abstract class WindowSetup {
         if (name.equalsIgnoreCase("flagNotTouchModal") || name.equalsIgnoreCase("focusPointer")) {
             flag = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
         }
+    if (name.equalsIgnoreCase("flagShowWhenLocked")) {
+        flag = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+    }
     }
 
     static void showWhenLocked(String name) {
