@@ -103,7 +103,7 @@ public class LockScreenOverlayActivity extends Activity {
         final int pxWidth = (width == -1999 || width == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(width);
         final int pxHeight = (height == -1999 || height == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(height);
 
-        new Handler().post(() -> {
+        new Handler(getMainLooper()).post(() -> {
             flutterView = new FlutterView(this, new FlutterTextureView(this));
             flutterView.attachToFlutterEngine(flutterEngine);
             flutterView.setBackgroundColor(Color.TRANSPARENT);
