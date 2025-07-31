@@ -125,6 +125,14 @@ public class FlutterOverlayWindowPlugin implements
             WindowSetup.setNotificationVisibility(notificationVisibility);
 
             if (lockScreenIntent) {
+                if (LockScreenOverlayActivity.isRunning) {
+    Log.d("OverlayPlugin", "LockScreenOverlay já está rodando, trazendo para frente.");
+    
+    Intent bringToFront = new Intent(context, LockScreenOverlayActivity.class);
+    bringToFront.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+    context.startActivity(bringToFront);
+} else {
+    Log.d("OverlayPlugin", "Iniciando LockScreenOverlayActivity");
                 // Abrir a activity com overlay na tela de bloqueio
                 Intent lockIntent = new Intent(context, LockScreenOverlayActivity.class);
                 lockIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -138,7 +146,16 @@ public class FlutterOverlayWindowPlugin implements
                 lockIntent.putExtra("overlayTitle", overlayTitle);
                 lockIntent.putExtra("overlayContent", overlayContent);
                 context.startActivity(lockIntent);
+}
             } else {
+                 if (OverlayService.isRunning) {
+        Log.d("OverlayPlugin", "OverlayService já está rodando, enviando comando para exibir novamente.");
+
+        Intent intent = new Intent(context, OverlayService.class);
+        intent.setAction("SHOW_OVERLAY_AGAIN");
+        ContextCompat.startForegroundService(context, intent);
+    } else {
+        Log.d("OverlayPlugin", "Iniciando novo OverlayService");
                 // Comportamento atual, iniciar serviço de sobreposição
                 final Intent intent = new Intent(context, OverlayService.class);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -152,6 +169,7 @@ public class FlutterOverlayWindowPlugin implements
                 intent.putExtra("overlayTitle", overlayTitle);
                 intent.putExtra("overlayContent", overlayContent);
                 ContextCompat.startForegroundService(context, intent);
+    }
             }
             result.success(null);
         } else if (call.method.equals("isOverlayActive")) {

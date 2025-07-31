@@ -121,6 +121,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
         if (null == intent) {
             return START_NOT_STICKY;
         }
+        if (windowManager != null && flutterView != null) {
+            Log.d("OverlayService", "Overlay já ativo, ignorando criação.");
+            return START_STICKY;
+        }
         createNotificationChannel();
 
         Intent notificationIntent = new Intent(this, FlutterOverlayWindowPlugin.class);
@@ -547,6 +551,20 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     mTrayAnimationTimer.cancel();
                 }
             });
+        }
+    }
+    private void bringOverlayToFront() {
+        if (flutterView != null && flutterView.getParent() != null) {
+            try {
+                // Remove e adiciona de novo para garantir z-order
+                windowManager.removeView(flutterView);
+                windowManager.addView(flutterView, layoutParams);
+                Log.d("OverlayService", "Overlay trazido para frente com sucesso.");
+            } catch (Exception e) {
+                Log.e("OverlayService", "Erro ao trazer overlay para frente: " + e.getMessage());
+            }
+        } else {
+            Log.w("OverlayService", "FlutterView não está anexado ao WindowManager.");
         }
     }
 

@@ -148,5 +148,10 @@ public class LockScreenOverlayActivity extends Activity {
     private int dpToPx(int dp) {
         return (int) (dp * resources.getDisplayMetrics().density);
     }
-    
+    @Override
+protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    Log.d("LockScreenOverlay", "onNewIntent chamado – activity reordenada para frente.");
+    setIntent(intent); // Atualiza intent se quiser usar extras
+}
 }
