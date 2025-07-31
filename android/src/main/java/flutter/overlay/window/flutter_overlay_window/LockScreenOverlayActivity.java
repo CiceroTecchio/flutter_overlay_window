@@ -98,27 +98,28 @@ public class LockScreenOverlayActivity extends Activity {
         int width = intent.getIntExtra("width", 300);
         int height = intent.getIntExtra("height", 300);
 
-        flutterView = new FlutterView(this, new FlutterTextureView(this));
-        flutterView.attachToFlutterEngine(flutterEngine);
-        flutterView.setBackgroundColor(Color.TRANSPARENT);
-        flutterView.setFocusable(true);
-        flutterView.setFocusableInTouchMode(true);
+       
+        final int pxWidth = (width == -1999 || width == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(width);
+        final int pxHeight = (height == -1999 || height == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(height);
 
+        new Handler().post(() -> {
+            flutterView = new FlutterView(this, new FlutterTextureView(this));
+            flutterView.attachToFlutterEngine(flutterEngine);
+            flutterView.setBackgroundColor(Color.TRANSPARENT);
+            flutterView.setFocusable(true);
+            flutterView.setFocusableInTouchMode(true);
 
-        // Definindo tamanho e centralização
-        int pxWidth = (width == -1999 || width == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(width);
-        int pxHeight = (height == -1999 || height == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(height);
+            FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(pxWidth, pxHeight);
+            layoutParams.gravity = Gravity.CENTER;
 
-        FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(pxWidth, pxHeight);
-        layoutParams.gravity = Gravity.CENTER;
-        
-        FrameLayout root = new FrameLayout(this);
-        root.setLayoutParams(new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT));
-        root.addView(flutterView, layoutParams);
+            FrameLayout root = new FrameLayout(this);
+            root.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+            root.addView(flutterView, layoutParams);
 
-        setContentView(root);
+            setContentView(root);
+        });
     }
 
     @Override
