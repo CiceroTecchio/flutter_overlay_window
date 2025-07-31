@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 
 import android.app.Activity;
@@ -50,6 +52,42 @@ public class LockScreenOverlayActivity extends Activity {
             registerReceiver(closeReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
             registerReceiver(closeReceiver, filter);
+        }
+
+        createNotificationChannel();
+
+        Intent notificationIntent = new Intent(this, FlutterOverlayWindowPlugin.class);
+        int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ? PendingIntent.FLAG_IMMUTABLE
+                : PendingIntent.FLAG_UPDATE_CURRENT;
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(this,
+                0, notificationIntent, pendingFlags);
+
+        int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
+
+        Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
+                .setContentTitle(WindowSetup.overlayTitle)
+                .setContentText(WindowSetup.overlayContent)
+                .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
+                .setContentIntent(pendingIntent)
+                .setVisibility(WindowSetup.notificationVisibility)
+                .setOngoing(true)
+                .build();
+
+        notification.flags |= Notification.FLAG_NO_CLEAR;
+
+        if (Build.VERSION.SDK_INT >= 34) {
+            int foregroundType = 0;
+            try {
+                foregroundType = (int) ServiceInfo.class
+                        .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
+        } else {
+            startForeground(OverlayConstants.NOTIFICATION_ID, notification);
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -120,8 +158,24 @@ public class LockScreenOverlayActivity extends Activity {
         setContentView(root);
     }
 
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel serviceChannel = new NotificationChannel(
+                    OverlayConstants.CHANNEL_ID,
+                    "Foreground Service Channel",
+                    NotificationManager.IMPORTANCE_DEFAULT);
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            assert manager != null;
+            manager.createNotificationChannel(serviceChannel);
+        }
+    }
+
+    private int getDrawableResourceId(String resType, String name) {
+        return getApplicationContext().getResources().getIdentifier(name, resType,
+                getApplicationContext().getPackageName());
+    }
+
     @Override
-    
     public void onDestroy() {
         super.onDestroy();
         unregisterReceiver(closeReceiver);
