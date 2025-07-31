@@ -188,8 +188,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
         
         engine.getLifecycleChannel().appIsResumed();
+        
+        if (flutterView != null) {
+            flutterView.detachFromFlutterEngine();
+            if (windowManager != null) {
+                windowManager.removeView(flutterView);
+                windowManager = null;
+            }
+        }
+
         flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
-        flutterView.attachToFlutterEngine(FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG));
+        flutterView.attachToFlutterEngine(engine);
         flutterView.setFitsSystemWindows(true);
         flutterView.setFocusable(true);
         flutterView.setFocusableInTouchMode(true);

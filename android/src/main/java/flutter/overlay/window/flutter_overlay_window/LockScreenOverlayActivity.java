@@ -138,8 +138,9 @@ public class LockScreenOverlayActivity extends Activity {
             e.printStackTrace();
         }
         
-        if (flutterView != null) {
+       if (flutterView != null) {
             flutterView.detachFromFlutterEngine();
+            flutterView = null; // opcional
         }
         isRunning = false;
     }
