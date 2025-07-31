@@ -121,10 +121,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
         if (null == intent) {
             return START_NOT_STICKY;
         }
-        if (windowManager != null && flutterView != null) {
-            Log.d("OverlayService", "Overlay já ativo, ignorando criação.");
+        
+        // Se overlay já ativo e ação é "SHOW_OVERLAY_AGAIN", só traga para frente e saia
+        if (windowManager != null && flutterView != null && "SHOW_OVERLAY_AGAIN".equals(intent.getAction())) {
+            bringOverlayToFront();
+            Log.d("OverlayService", "Overlay já ativo, trazido para frente.");
             return START_STICKY;
         }
+
         createNotificationChannel();
 
         Intent notificationIntent = new Intent(this, FlutterOverlayWindowPlugin.class);
@@ -554,18 +558,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
     private void bringOverlayToFront() {
-        if (flutterView != null && flutterView.getParent() != null) {
-            try {
-                // Remove e adiciona de novo para garantir z-order
-                windowManager.removeView(flutterView);
-                windowManager.addView(flutterView, layoutParams);
-                Log.d("OverlayService", "Overlay trazido para frente com sucesso.");
-            } catch (Exception e) {
-                Log.e("OverlayService", "Erro ao trazer overlay para frente: " + e.getMessage());
-            }
-        } else {
-            Log.w("OverlayService", "FlutterView não está anexado ao WindowManager.");
+    if (flutterView != null && flutterView.getParent() != null) {
+        try {
+            windowManager.removeView(flutterView);
+
+            WindowManager.LayoutParams layoutParams = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+
+            windowManager.addView(flutterView, layoutParams);
+
+            Log.d("OverlayService", "Overlay trazido para frente com sucesso.");
+        } catch (Exception e) {
+            Log.e("OverlayService", "Erro ao trazer overlay para frente: " + e.getMessage());
         }
+    } else {
+        Log.w("OverlayService", "FlutterView não está anexado ao WindowManager.");
     }
+}
 
 }
