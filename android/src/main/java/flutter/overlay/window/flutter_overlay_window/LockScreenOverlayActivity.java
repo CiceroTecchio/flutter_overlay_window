@@ -4,13 +4,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.app.Service;
-import android.content.pm.ServiceInfo;
-import androidx.core.app.NotificationCompat;
 
 import android.app.Activity;
 import android.os.Build;
@@ -58,42 +51,6 @@ public class LockScreenOverlayActivity extends Activity {
             registerReceiver(closeReceiver, filter);
         }
 
-        createNotificationChannel();
-
-        Intent notificationIntent = new Intent(this, FlutterOverlayWindowPlugin.class);
-        int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                ? PendingIntent.FLAG_IMMUTABLE
-                : PendingIntent.FLAG_UPDATE_CURRENT;
-
-        PendingIntent pendingIntent = PendingIntent.getActivity(this,
-                0, notificationIntent, pendingFlags);
-
-        int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
-
-        Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
-                .setContentTitle(WindowSetup.overlayTitle)
-                .setContentText(WindowSetup.overlayContent)
-                .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
-                .setContentIntent(pendingIntent)
-                .setVisibility(WindowSetup.notificationVisibility)
-                .setOngoing(true)
-                .build();
-
-        notification.flags |= Notification.FLAG_NO_CLEAR;
-
-        if (Build.VERSION.SDK_INT >= 34) {
-            int foregroundType = 0;
-            try {
-                foregroundType = (int) ServiceInfo.class
-                        .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
-        } else {
-            startForeground(OverlayConstants.NOTIFICATION_ID, notification);
-        }
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
@@ -104,9 +61,11 @@ public class LockScreenOverlayActivity extends Activity {
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-            WindowManager.LayoutParams.FLAG_FULLSCREEN |
-            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+            WindowManager.LayoutParams.FLAG_FULLSCREEN
         );
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O_MR1) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+        }
         
         resources = getResources();
 
@@ -162,24 +121,8 @@ public class LockScreenOverlayActivity extends Activity {
         setContentView(root);
     }
 
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel serviceChannel = new NotificationChannel(
-                    OverlayConstants.CHANNEL_ID,
-                    "Foreground Service Channel",
-                    NotificationManager.IMPORTANCE_DEFAULT);
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            assert manager != null;
-            manager.createNotificationChannel(serviceChannel);
-        }
-    }
-
-    private int getDrawableResourceId(String resType, String name) {
-        return getApplicationContext().getResources().getIdentifier(name, resType,
-                getApplicationContext().getPackageName());
-    }
-
     @Override
+    
     public void onDestroy() {
         super.onDestroy();
         unregisterReceiver(closeReceiver);
@@ -199,9 +142,6 @@ public class LockScreenOverlayActivity extends Activity {
             flutterView.detachFromFlutterEngine();
         }
         isRunning = false;
-        
-        NotificationManager notificationManager = (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
-        notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
     }
 
     private int dpToPx(int dp) {
