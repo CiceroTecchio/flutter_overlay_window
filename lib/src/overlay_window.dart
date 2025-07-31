@@ -9,12 +9,16 @@ class FlutterOverlayWindow {
   FlutterOverlayWindow._();
 
   static final StreamController _controller = StreamController();
-  static const MethodChannel _channel =
-      MethodChannel("x-slayer/overlay_channel");
-  static const MethodChannel _overlayChannel =
-      MethodChannel("x-slayer/overlay");
-  static const BasicMessageChannel _overlayMessageChannel =
-      BasicMessageChannel("x-slayer/overlay_messenger", JSONMessageCodec());
+  static const MethodChannel _channel = MethodChannel(
+    "x-slayer/overlay_channel",
+  );
+  static const MethodChannel _overlayChannel = MethodChannel(
+    "x-slayer/overlay",
+  );
+  static const BasicMessageChannel _overlayMessageChannel = BasicMessageChannel(
+    "x-slayer/overlay_messenger",
+    JSONMessageCodec(),
+  );
 
   /// Open overLay content
   ///
@@ -51,27 +55,35 @@ class FlutterOverlayWindow {
     PositionGravity positionGravity = PositionGravity.none,
     OverlayPosition? startPosition,
   }) async {
-    await _channel.invokeMethod(
-      'showOverlay',
-      {
-        "height": height,
-        "width": width,
-        "alignment": alignment.name,
-        "flag": flag.name,
-        "overlayTitle": overlayTitle,
-        "overlayContent": overlayContent,
-        "enableDrag": enableDrag,
-        "notificationVisibility": visibility.name,
-        "positionGravity": positionGravity.name,
-        "startPosition": startPosition?.toMap(),
-      },
-    );
+    await _channel.invokeMethod('showOverlay', {
+      "height": height,
+      "width": width,
+      "alignment": alignment.name,
+      "flag": flag.name,
+      "overlayTitle": overlayTitle,
+      "overlayContent": overlayContent,
+      "enableDrag": enableDrag,
+      "notificationVisibility": visibility.name,
+      "positionGravity": positionGravity.name,
+      "startPosition": startPosition?.toMap(),
+    });
   }
 
   /// Check if overlay permission is granted
   static Future<bool> isPermissionGranted() async {
     try {
       return await _channel.invokeMethod<bool>('checkPermission') ?? false;
+    } on PlatformException catch (error) {
+      log("$error");
+      return Future.value(false);
+    }
+  }
+
+  /// Check if Device is LockedOrScreenOff
+  static Future<bool> isDeviceLockedOrScreenOff() async {
+    try {
+      return await _channel.invokeMethod<bool>('isDeviceLockedOrScreenOff') ??
+          false;
     } on PlatformException catch (error) {
       log("$error");
       return Future.value(false);
@@ -111,8 +123,9 @@ class FlutterOverlayWindow {
 
   /// Update the overlay flag while the overlay in action
   static Future<bool?> updateFlag(OverlayFlag flag) async {
-    final bool? _res = await _overlayChannel
-        .invokeMethod<bool?>('updateFlag', {'flag': flag.name});
+    final bool? _res = await _overlayChannel.invokeMethod<bool?>('updateFlag', {
+      'flag': flag.name,
+    });
     return _res;
   }
 
@@ -124,11 +137,7 @@ class FlutterOverlayWindow {
   ) async {
     final bool? _res = await _overlayChannel.invokeMethod<bool?>(
       'resizeOverlay',
-      {
-        'width': width,
-        'height': height,
-        'enableDrag': enableDrag,
-      },
+      {'width': width, 'height': height, 'enableDrag': enableDrag},
     );
     return _res;
   }

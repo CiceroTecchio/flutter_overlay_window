@@ -126,50 +126,50 @@ public class FlutterOverlayWindowPlugin implements
 
             if (lockScreenIntent) {
                 if (LockScreenOverlayActivity.isRunning) {
-    Log.d("OverlayPlugin", "LockScreenOverlay já está rodando, trazendo para frente.");
-    
-    Intent bringToFront = new Intent(context, LockScreenOverlayActivity.class);
-    bringToFront.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-    context.startActivity(bringToFront);
-} else {
-    Log.d("OverlayPlugin", "Iniciando LockScreenOverlayActivity");
-                // Abrir a activity com overlay na tela de bloqueio
-                Intent lockIntent = new Intent(context, LockScreenOverlayActivity.class);
-                lockIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                lockIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                lockIntent.putExtra("startX", startX);
-                lockIntent.putExtra("startY", startY);
-                lockIntent.putExtra("width", width);
-                lockIntent.putExtra("height", height);
-                lockIntent.putExtra("enableDrag", enableDrag);
-                lockIntent.putExtra("alignment", alignment);
-                lockIntent.putExtra("overlayTitle", overlayTitle);
-                lockIntent.putExtra("overlayContent", overlayContent);
-                context.startActivity(lockIntent);
-}
+                    Log.d("OverlayPlugin", "LockScreenOverlay já está rodando, trazendo para frente.");
+                    
+                    Intent bringToFront = new Intent(context, LockScreenOverlayActivity.class);
+                    bringToFront.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    context.startActivity(bringToFront);
+                } else {
+                    Log.d("OverlayPlugin", "Iniciando LockScreenOverlayActivity");
+                    // Abrir a activity com overlay na tela de bloqueio
+                    Intent lockIntent = new Intent(context, LockScreenOverlayActivity.class);
+                    lockIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    lockIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    lockIntent.putExtra("startX", startX);
+                    lockIntent.putExtra("startY", startY);
+                    lockIntent.putExtra("width", width);
+                    lockIntent.putExtra("height", height);
+                    lockIntent.putExtra("enableDrag", enableDrag);
+                    lockIntent.putExtra("alignment", alignment);
+                    lockIntent.putExtra("overlayTitle", overlayTitle);
+                    lockIntent.putExtra("overlayContent", overlayContent);
+                    context.startActivity(lockIntent);
+                }
             } else {
-                 if (OverlayService.isRunning) {
-        Log.d("OverlayPlugin", "OverlayService já está rodando, enviando comando para exibir novamente.");
+                if (OverlayService.isRunning) {
+                    Log.d("OverlayPlugin", "OverlayService já está rodando, enviando comando para exibir novamente.");
 
-        Intent intent = new Intent(context, OverlayService.class);
-        intent.setAction("SHOW_OVERLAY_AGAIN");
-        ContextCompat.startForegroundService(context, intent);
-    } else {
-        Log.d("OverlayPlugin", "Iniciando novo OverlayService");
-                // Comportamento atual, iniciar serviço de sobreposição
-                final Intent intent = new Intent(context, OverlayService.class);
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                intent.putExtra("startX", startX);
-                intent.putExtra("startY", startY);
-                intent.putExtra("width", width);
-                intent.putExtra("height", height);
-                intent.putExtra("enableDrag", enableDrag);
-                intent.putExtra("alignment", alignment);
-                intent.putExtra("overlayTitle", overlayTitle);
-                intent.putExtra("overlayContent", overlayContent);
-                ContextCompat.startForegroundService(context, intent);
-    }
+                    Intent intent = new Intent(context, OverlayService.class);
+                    intent.setAction("SHOW_OVERLAY_AGAIN");
+                    ContextCompat.startForegroundService(context, intent);
+                } else {
+                    Log.d("OverlayPlugin", "Iniciando novo OverlayService");
+                    // Comportamento atual, iniciar serviço de sobreposição
+                    final Intent intent = new Intent(context, OverlayService.class);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    intent.putExtra("startX", startX);
+                    intent.putExtra("startY", startY);
+                    intent.putExtra("width", width);
+                    intent.putExtra("height", height);
+                    intent.putExtra("enableDrag", enableDrag);
+                    intent.putExtra("alignment", alignment);
+                    intent.putExtra("overlayTitle", overlayTitle);
+                    intent.putExtra("overlayContent", overlayContent);
+                    ContextCompat.startForegroundService(context, intent);
+                }
             }
             result.success(null);
         } else if (call.method.equals("isOverlayActive")) {
@@ -184,6 +184,8 @@ public class FlutterOverlayWindowPlugin implements
             result.success(OverlayService.moveOverlay(x, y));
         } else if (call.method.equals("getOverlayPosition")) {
             result.success(OverlayService.getCurrentPosition());
+        } else if (call.method.equals("isDeviceLockedOrScreenOff")) {
+            result.success(isDeviceLockedOrScreenOff());
         } else if (call.method.equals("closeOverlay")) {
            if (OverlayService.isRunning) {
                 Intent i = new Intent(context, OverlayService.class);
@@ -222,6 +224,16 @@ public class FlutterOverlayWindowPlugin implements
             FlutterEngine engine = enn.createAndRunEngine(context, dEntry);
             FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
         }
+    }
+
+    public boolean isDeviceLockedOrScreenOff() {
+        KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+
+        boolean isLocked = keyguardManager != null && keyguardManager.isKeyguardLocked();
+        boolean isScreenOff = powerManager != null && !powerManager.isInteractive();
+
+        return isLocked || isScreenOff;
     }
 
     @Override

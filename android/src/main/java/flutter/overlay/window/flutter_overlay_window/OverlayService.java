@@ -439,6 +439,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     OverlayConstants.CHANNEL_ID,
                     "Foreground Service Channel",
                     NotificationManager.IMPORTANCE_DEFAULT);
+            serviceChannel.setSound(null, null); 
+            serviceChannel.enableVibration(false);
             NotificationManager manager = getSystemService(NotificationManager.class);
             assert manager != null;
             manager.createNotificationChannel(serviceChannel);
@@ -558,21 +560,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
     private void bringOverlayToFront() {
-    if (flutterView != null && flutterView.getParent() != null) {
-        try {
-            windowManager.removeView(flutterView);
+        if (flutterView != null && flutterView.getParent() != null) {
+            try {
+                windowManager.removeView(flutterView);
 
-            WindowManager.LayoutParams layoutParams = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+                WindowManager.LayoutParams layoutParams = (WindowManager.LayoutParams) flutterView.getLayoutParams();
 
-            windowManager.addView(flutterView, layoutParams);
+                windowManager.addView(flutterView, layoutParams);
 
-            Log.d("OverlayService", "Overlay trazido para frente com sucesso.");
-        } catch (Exception e) {
-            Log.e("OverlayService", "Erro ao trazer overlay para frente: " + e.getMessage());
+                Log.d("OverlayService", "Overlay trazido para frente com sucesso.");
+            } catch (Exception e) {
+                Log.e("OverlayService", "Erro ao trazer overlay para frente: " + e.getMessage());
+            }
+        } else {
+            Log.w("OverlayService", "FlutterView não está anexado ao WindowManager.");
         }
-    } else {
-        Log.w("OverlayService", "FlutterView não está anexado ao WindowManager.");
     }
-}
 
 }
