@@ -227,8 +227,8 @@ public class FlutterOverlayWindowPlugin implements
     }
 
     public boolean isDeviceLockedOrScreenOff() {
-        KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
-        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        KeyguardManager keyguardManager = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
+        PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
 
         boolean isLocked = keyguardManager != null && keyguardManager.isKeyguardLocked();
         boolean isScreenOff = powerManager != null && !powerManager.isInteractive();
