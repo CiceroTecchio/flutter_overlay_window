@@ -10,6 +10,9 @@ import android.provider.Settings;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 import android.view.WindowManager;
+import android.os.PowerManager;
+import android.app.KeyguardManager;
+import androidx.core.content.ContextCompat;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -93,23 +96,69 @@ public class FlutterOverlayWindowPlugin implements
             int startX = startPosition != null ? startPosition.getOrDefault("x", OverlayConstants.DEFAULT_XY) : OverlayConstants.DEFAULT_XY;
             int startY = startPosition != null ? startPosition.getOrDefault("y", OverlayConstants.DEFAULT_XY) : OverlayConstants.DEFAULT_XY;
 
+            PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            KeyguardManager keyguardManager = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
+
+            boolean isScreenOff = powerManager != null && !powerManager.isInteractive();
+            boolean isLocked = keyguardManager != null && keyguardManager.isKeyguardLocked();
+
+            boolean lockScreenIntent = false;
+
+            String lockScreenFlag = flag;
+
+            if ("lockScreen".equals(flag) && (isScreenOff || isLocked)) {
+                lockScreenIntent = true;
+            } else {
+                if (flag == null || "lockScreen".equals(flag)) {
+                    lockScreenFlag = "flagNotFocusable";
+                }
+            }
 
             WindowSetup.width = width != null ? width : -1;
             WindowSetup.height = height != null ? height : -1;
             WindowSetup.enableDrag = enableDrag;
             WindowSetup.setGravityFromAlignment(alignment != null ? alignment : "center");
-            WindowSetup.setFlag(flag != null ? flag : "flagNotFocusable");
+            WindowSetup.setFlag(lockScreenFlag);
             WindowSetup.overlayTitle = overlayTitle;
             WindowSetup.overlayContent = overlayContent == null ? "" : overlayContent;
             WindowSetup.positionGravity = positionGravity;
             WindowSetup.setNotificationVisibility(notificationVisibility);
 
-            final Intent intent = new Intent(context, OverlayService.class);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            intent.putExtra("startX", startX);
-            intent.putExtra("startY", startY);
-            context.startService(intent);
+            Log.d("OverlayDebug", "flag = " + flag);
+            Log.d("OverlayDebug", "isScreenOff = " + isScreenOff);
+            Log.d("OverlayDebug", "isLocked = " + isLocked);
+            Log.d("OverlayDebug", "startX = " + startX);
+            Log.d("OverlayDebug", "startY = " + startY);
+
+            if (lockScreenIntent) {
+                // Abrir a activity com overlay na tela de bloqueio
+                Intent lockIntent = new Intent(context, LockScreenOverlayActivity.class);
+                lockIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                lockIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                lockIntent.putExtra("startX", startX);
+                lockIntent.putExtra("startY", startY);
+                lockIntent.putExtra("width", width);
+                lockIntent.putExtra("height", height);
+                lockIntent.putExtra("enableDrag", enableDrag);
+                lockIntent.putExtra("alignment", alignment);
+                lockIntent.putExtra("overlayTitle", overlayTitle);
+                lockIntent.putExtra("overlayContent", overlayContent);
+                context.startActivity(lockIntent);
+            } else {
+                // Comportamento atual, iniciar serviço de sobreposição
+                final Intent intent = new Intent(context, OverlayService.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                intent.putExtra("startX", startX);
+                intent.putExtra("startY", startY);
+                intent.putExtra("width", width);
+                intent.putExtra("height", height);
+                intent.putExtra("enableDrag", enableDrag);
+                intent.putExtra("alignment", alignment);
+                intent.putExtra("overlayTitle", overlayTitle);
+                intent.putExtra("overlayContent", overlayContent);
+                ContextCompat.startForegroundService(context, intent);
+            }
             result.success(null);
         } else if (call.method.equals("isOverlayActive")) {
             result.success(OverlayService.isRunning);
@@ -124,11 +173,18 @@ public class FlutterOverlayWindowPlugin implements
         } else if (call.method.equals("getOverlayPosition")) {
             result.success(OverlayService.getCurrentPosition());
         } else if (call.method.equals("closeOverlay")) {
-            if (OverlayService.isRunning) {
-                final Intent i = new Intent(context, OverlayService.class);
+           if (OverlayService.isRunning) {
+                Intent i = new Intent(context, OverlayService.class);
                 context.stopService(i);
-                result.success(true);
             }
+
+            // Envia broadcast para fechar a LockScreenOverlayActivity, caso esteja visível
+            Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
+            closeIntent.setPackage(context.getPackageName());
+            context.sendBroadcast(closeIntent);
+            Log.d("LockScreenOverlay", "Enviando broadcast para fechar lock screen overlay");
+
+            result.success(true);
             return;
         } else {
             result.notImplemented();
@@ -195,35 +251,4 @@ public class FlutterOverlayWindowPlugin implements
         }
         return false;
     }
-        
-private void createNotificationChannelWithSound() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        String channelId = "high_importance_channel";
-        String channelName = "Canal importante";
-
-        Uri soundUri = Uri.parse("android.resource://" + context.getPackageName() + "/raw/notification");
-
-        AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build();
-
-        NotificationChannel channel = new NotificationChannel(
-                channelId,
-                channelName,
-                NotificationManager.IMPORTANCE_HIGH
-        );
-        channel.setDescription("Notificações com som personalizado");
-        channel.enableLights(true);
-        channel.enableVibration(true);
-        channel.setSound(soundUri, audioAttributes);
-
-        NotificationManager notificationManager =
-                (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-
-        // Exclui o canal antigo para garantir a atualização de som
-        notificationManager.deleteNotificationChannel(channelId);
-        notificationManager.createNotificationChannel(channel);
-    }
-}
 }

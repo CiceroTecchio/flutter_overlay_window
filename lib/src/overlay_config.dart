@@ -53,6 +53,9 @@ enum OverlayFlag {
   /// Window flag: allow any pointer events outside of the window to be sent to the windows behind it.
   /// Usefull when you want to use fields that show keyboards.
   focusPointer,
+
+  lockScreen,
+
 }
 
 /// The level of detail displayed in notifications on the lock screen.

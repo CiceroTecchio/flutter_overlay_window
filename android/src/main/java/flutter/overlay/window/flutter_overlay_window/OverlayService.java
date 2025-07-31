@@ -195,11 +195,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
             szWindow.set(w, h);
         }
 
+        int width = intent.getIntExtra("width", WindowSetup.width);
+        int height = intent.getIntExtra("height", screenHeight());
+
         int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : startX;
         int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : startY;
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                WindowSetup.width == -1999 ? -1 : WindowSetup.width,
-                WindowSetup.height != -1999 ? WindowSetup.height : screenHeight(),
+                (width == -1999 || width == -1) ? -1 : dpToPx(width),
+                (height != 1999 || height != -1) ? dpToPx(height) : height,
                 0,
                 -statusBarHeightPx(),
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE,
@@ -216,6 +219,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         flutterView.setOnTouchListener(this);
         windowManager.addView(flutterView, params);
         moveOverlay(dx, dy, null);
+        
         return START_STICKY;
     }
 
@@ -392,7 +396,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
                .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
                 .setContentIntent(pendingIntent)
                 .setVisibility(WindowSetup.notificationVisibility)
+                .setOngoing(true)
                 .build();
+
+        notification.flags |= Notification.FLAG_NO_CLEAR;
+
         if (Build.VERSION.SDK_INT >= 34) {
             int foregroundType = 0;
             try {

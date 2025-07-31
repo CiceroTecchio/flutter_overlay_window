@@ -4,4 +4,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+
+    <application>
+        <activity
+            android:name=".LockScreenOverlayActivity"
+            android:theme="@style/Theme.Transparent"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:exported="true"
+            android:excludeFromRecents="true" />
+    </application>
 </manifest>
