@@ -67,11 +67,11 @@ public class FlutterOverlayWindowPlugin implements
     @RequiresApi(api = Build.VERSION_CODES.N)
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
-        pendingResult = result;
         if (call.method.equals("checkPermission")) {
             result.success(checkOverlayPermission());
         } else if (call.method.equals("requestPermission")) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                pendingResult = result;
                 Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
                 intent.setData(Uri.parse("package:" + mActivity.getPackageName()));
                 mActivity.startActivityForResult(intent, REQUEST_CODE_FOR_OVERLAY_PERMISSION);
@@ -123,12 +123,6 @@ public class FlutterOverlayWindowPlugin implements
             WindowSetup.overlayContent = overlayContent == null ? "" : overlayContent;
             WindowSetup.positionGravity = positionGravity;
             WindowSetup.setNotificationVisibility(notificationVisibility);
-
-            Log.d("OverlayDebug", "flag = " + flag);
-            Log.d("OverlayDebug", "isScreenOff = " + isScreenOff);
-            Log.d("OverlayDebug", "isLocked = " + isLocked);
-            Log.d("OverlayDebug", "startX = " + startX);
-            Log.d("OverlayDebug", "startY = " + startY);
 
             if (lockScreenIntent) {
                 // Abrir a activity com overlay na tela de bloqueio
@@ -243,10 +237,13 @@ public class FlutterOverlayWindowPlugin implements
         return true;
     }
 
-    @Override
+   @Override
     public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_CODE_FOR_OVERLAY_PERMISSION) {
-            pendingResult.success(checkOverlayPermission());
+            if (pendingResult != null) {
+                pendingResult.success(checkOverlayPermission());
+                pendingResult = null;  // evita chamadas múltiplas
+            }
             return true;
         }
         return false;
