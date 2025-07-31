@@ -7,6 +7,10 @@ import android.content.IntentFilter;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.pm.ServiceInfo;
+import androidx.core.app.NotificationCompat;
 
 import android.app.Activity;
 import android.os.Build;
