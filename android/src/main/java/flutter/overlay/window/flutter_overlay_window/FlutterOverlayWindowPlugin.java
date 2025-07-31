@@ -172,12 +172,13 @@ public class FlutterOverlayWindowPlugin implements
                 context.stopService(i);
             }
 
-            // Envia broadcast para fechar a LockScreenOverlayActivity, caso esteja visível
-            Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
-            closeIntent.setPackage(context.getPackageName());
-            context.sendBroadcast(closeIntent);
-            Log.d("LockScreenOverlay", "Enviando broadcast para fechar lock screen overlay");
-
+            if (LockScreenOverlayActivity.isRunning) {
+                // Envia broadcast para fechar a LockScreenOverlayActivity, caso esteja visível
+                Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
+                closeIntent.setPackage(context.getPackageName());
+                context.sendBroadcast(closeIntent);
+                Log.d("LockScreenOverlay", "Enviando broadcast para fechar lock screen overlay");
+            }
             result.success(true);
             return;
         } else {

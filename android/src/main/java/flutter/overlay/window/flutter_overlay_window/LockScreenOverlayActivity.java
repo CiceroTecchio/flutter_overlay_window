@@ -31,6 +31,7 @@ public class LockScreenOverlayActivity extends Activity {
     private MethodChannel flutterChannel;
     private BasicMessageChannel<Object> overlayMessageChannel;
     private Resources resources;
+    public static boolean isRunning = false;
     private BroadcastReceiver closeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -75,6 +76,7 @@ public class LockScreenOverlayActivity extends Activity {
         }
         flutterEngine.getLifecycleChannel().appIsResumed();
 
+        isRunning = true;
         flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
         overlayMessageChannel = new BasicMessageChannel<>(flutterEngine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
 
@@ -138,6 +140,7 @@ public class LockScreenOverlayActivity extends Activity {
         if (flutterView != null) {
             flutterView.detachFromFlutterEngine();
         }
+        isRunning = false;
         
         NotificationManager notificationManager = (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
         notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
