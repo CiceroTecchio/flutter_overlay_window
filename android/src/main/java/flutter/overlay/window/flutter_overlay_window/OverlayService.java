@@ -127,7 +127,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             int width = intent.getIntExtra("width", 300);
             int height = intent.getIntExtra("height", 300);
             boolean enableDrag = intent.getBooleanExtra("enableDrag", false);
-            resizeOverlay(width, height, enableDrag, result);
+            resizeOverlay(width, height, enableDrag, null);
 
             int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
             int startY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
