@@ -130,14 +130,14 @@ public class FlutterOverlayWindowPlugin implements
                     
                     Intent bringToFront = new Intent(context, LockScreenOverlayActivity.class);
                     bringToFront.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-                    lockIntent.putExtra("startX", startX);
-                    lockIntent.putExtra("startY", startY);
-                    lockIntent.putExtra("width", width);
-                    lockIntent.putExtra("height", height);
-                    lockIntent.putExtra("enableDrag", enableDrag);
-                    lockIntent.putExtra("alignment", alignment);
-                    lockIntent.putExtra("overlayTitle", overlayTitle);
-                    lockIntent.putExtra("overlayContent", overlayContent);
+                    bringToFront.putExtra("startX", startX);
+                    bringToFront.putExtra("startY", startY);
+                    bringToFront.putExtra("width", width);
+                    bringToFront.putExtra("height", height);
+                    bringToFront.putExtra("enableDrag", enableDrag);
+                    bringToFront.putExtra("alignment", alignment);
+                    bringToFront.putExtra("overlayTitle", overlayTitle);
+                    bringToFront.putExtra("overlayContent", overlayContent);
                     context.startActivity(bringToFront);
                 } else {
                     Log.d("OverlayPlugin", "Iniciando LockScreenOverlayActivity");
