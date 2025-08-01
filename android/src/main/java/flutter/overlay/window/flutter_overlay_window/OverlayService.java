@@ -126,7 +126,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         if (windowManager != null && flutterView != null && "SHOW_OVERLAY_AGAIN".equals(intent.getAction())) {
             int width = intent.getIntExtra("width", 300);
             int height = intent.getIntExtra("height", 300);
-            boolean enableDrag = intent.getBooleanExtra("enableDrag", 300);
+            boolean enableDrag = intent.getBooleanExtra("enableDrag", false);
             resizeOverlay(width, height, enableDrag, result);
 
             int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
