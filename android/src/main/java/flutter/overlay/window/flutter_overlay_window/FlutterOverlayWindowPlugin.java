@@ -130,6 +130,14 @@ public class FlutterOverlayWindowPlugin implements
                     
                     Intent bringToFront = new Intent(context, LockScreenOverlayActivity.class);
                     bringToFront.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    lockIntent.putExtra("startX", startX);
+                    lockIntent.putExtra("startY", startY);
+                    lockIntent.putExtra("width", width);
+                    lockIntent.putExtra("height", height);
+                    lockIntent.putExtra("enableDrag", enableDrag);
+                    lockIntent.putExtra("alignment", alignment);
+                    lockIntent.putExtra("overlayTitle", overlayTitle);
+                    lockIntent.putExtra("overlayContent", overlayContent);
                     context.startActivity(bringToFront);
                 } else {
                     Log.d("OverlayPlugin", "Iniciando LockScreenOverlayActivity");
@@ -153,6 +161,14 @@ public class FlutterOverlayWindowPlugin implements
 
                     Intent intent = new Intent(context, OverlayService.class);
                     intent.setAction("SHOW_OVERLAY_AGAIN");
+                    intent.putExtra("startX", startX);
+                    intent.putExtra("startY", startY);
+                    intent.putExtra("width", width);
+                    intent.putExtra("height", height);
+                    intent.putExtra("enableDrag", enableDrag);
+                    intent.putExtra("alignment", alignment);
+                    intent.putExtra("overlayTitle", overlayTitle);
+                    intent.putExtra("overlayContent", overlayContent);
                     ContextCompat.startForegroundService(context, intent);
                 } else {
                     Log.d("OverlayPlugin", "Iniciando novo OverlayService");

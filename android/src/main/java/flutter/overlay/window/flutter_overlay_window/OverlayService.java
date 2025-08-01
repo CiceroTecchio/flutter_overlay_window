@@ -124,6 +124,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
         
         // Se overlay já ativo e ação é "SHOW_OVERLAY_AGAIN", só traga para frente e saia
         if (windowManager != null && flutterView != null && "SHOW_OVERLAY_AGAIN".equals(intent.getAction())) {
+            int width = intent.getIntExtra("width", 300);
+            int height = intent.getIntExtra("height", 300);
+            boolean enableDrag = intent.getBooleanExtra("enableDrag", 300);
+            resizeOverlay(width, height, enableDrag, result);
+
+            int sX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
+            int sY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
+            int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : startX;
+            int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : startY;
+            moveOverlay(dx, dy, null);
             bringOverlayToFront();
             Log.d("OverlayService", "Overlay já ativo, trazido para frente.");
             return START_STICKY;
