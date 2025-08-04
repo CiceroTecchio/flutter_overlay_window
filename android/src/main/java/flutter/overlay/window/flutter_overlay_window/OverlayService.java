@@ -100,7 +100,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             e.printStackTrace();
         }
 
-        if (windowManager != null) {
+        if (windowManager != null && flutterView != null) {
             windowManager.removeView(flutterView);
             windowManager = null;
             flutterView.detachFromFlutterEngine();
@@ -188,7 +188,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             isRunning = false;
             return START_STICKY;
         }
-        if (windowManager != null) {
+        if (windowManager != null && flutterView != null) {
             windowManager.removeView(flutterView);
             windowManager = null;
             flutterView.detachFromFlutterEngine();
@@ -376,9 +376,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
             // Atualiza o layout da view
             windowManager.updateViewLayout(flutterView, params);
-            result.success(true);
+            if (result != null) {
+                result.success(true);
+            }
         } else {
-            result.success(false);
+            if (result != null) {
+                result.success(false);
+            }
         }
     }
 
@@ -389,9 +393,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
             params.height = (height != 1999 || height != -1) ? dpToPx(height) : height;
             WindowSetup.enableDrag = enableDrag;
             windowManager.updateViewLayout(flutterView, params);
-            result.success(true);
+            if (result != null) {
+                result.success(true);
+            }
         } else {
-            result.success(false);
+            if (result != null) {
+                result.success(false);
+            }
         }
     }
 
@@ -438,6 +446,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     @Override
     public void onCreate() { // Get the cached FlutterEngine
+        // Initialize resources early to prevent null pointer exceptions
+        mResources = getApplicationContext().getResources();
+        
         FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
 
         if (flutterEngine == null) {
@@ -483,11 +494,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     private int dpToPx(int dp) {
+        if (mResources == null) {
+            Log.e("OverlayService", "Resources is null in dpToPx");
+            return dp; // Return original value as fallback
+        }
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
                 Float.parseFloat(dp + ""), mResources.getDisplayMetrics());
     }
 
     private double pxToDp(int px) {
+        if (mResources == null) {
+            Log.e("OverlayService", "Resources is null in pxToDp");
+            return px; // Return original value as fallback
+        }
         return (double) px / mResources.getDisplayMetrics().density;
     }
 
@@ -506,7 +525,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     @Override
     public boolean onTouch(View view, MotionEvent event) {
-        if (windowManager != null && WindowSetup.enableDrag) {
+        if (windowManager != null && WindowSetup.enableDrag && flutterView != null) {
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
@@ -560,10 +579,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private class TrayAnimationTimerTask extends TimerTask {
         int mDestX;
         int mDestY;
-        WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+        WindowManager.LayoutParams params;
 
         public TrayAnimationTimerTask() {
             super();
+            if (flutterView != null) {
+                params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+            } else {
+                return; // Exit early if flutterView is null
+            }
             mDestY = lastYPosition;
             switch (WindowSetup.positionGravity) {
                 case "auto":
@@ -586,6 +610,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
         @Override
         public void run() {
             mAnimationHandler.post(() -> {
+                if (params == null || flutterView == null) {
+                    return; // Exit early if params or flutterView is null
+                }
                 params.x = (2 * (params.x - mDestX)) / 3 + mDestX;
                 params.y = (2 * (params.y - mDestY)) / 3 + mDestY;
                 if (windowManager != null) {
@@ -593,7 +620,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 }
                 if (Math.abs(params.x - mDestX) < 2 && Math.abs(params.y - mDestY) < 2) {
                     TrayAnimationTimerTask.this.cancel();
-                    mTrayAnimationTimer.cancel();
+                    if (mTrayAnimationTimer != null) {
+                        mTrayAnimationTimer.cancel();
+                    }
                 }
             });
         }
