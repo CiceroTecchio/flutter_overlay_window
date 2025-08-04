@@ -409,11 +409,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
             params.x = (x == -1999 || x == -1) ? -1 : dpToPx(x);
             params.y = dpToPx(y);
             windowManager.updateViewLayout(flutterView, params);
-            if (result != null)
+            if (result != null) {
                 result.success(true);
+            }
         } else {
-            if (result != null)
+            if (result != null) {
                 result.success(false);
+            }
         }
     }
 
