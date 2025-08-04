@@ -172,28 +172,29 @@ public class FlutterOverlayWindowPlugin implements
                     intent.putExtra("overlayTitle", overlayTitle);
                     intent.putExtra("overlayContent", overlayContent);
                     ContextCompat.startForegroundService(context, intent);
-                            } else {
-                Log.d("OverlayPlugin", "Iniciando novo OverlayService");
-                // Comportamento atual, iniciar serviço de sobreposição
-                try {
-                    final Intent intent = new Intent(context, OverlayService.class);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    intent.putExtra("startX", startX);
-                    intent.putExtra("startY", startY);
-                    intent.putExtra("width", width);
-                    intent.putExtra("height", height);
-                    intent.putExtra("enableDrag", enableDrag);
-                    intent.putExtra("alignment", alignment);
-                    intent.putExtra("overlayTitle", overlayTitle);
-                    intent.putExtra("overlayContent", overlayContent);
-                    ContextCompat.startForegroundService(context, intent);
-                } catch (Exception e) {
-                    Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
-                    e.printStackTrace();
-                    result.error("SERVICE_ERROR", "Failed to start overlay service", e.getMessage());
-                    return;
-                }
+                 else {
+                    Log.d("OverlayPlugin", "Iniciando novo OverlayService");
+                    // Comportamento atual, iniciar serviço de sobreposição
+                    try {
+                        final Intent intent = new Intent(context, OverlayService.class);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        intent.putExtra("startX", startX);
+                        intent.putExtra("startY", startY);
+                        intent.putExtra("width", width);
+                        intent.putExtra("height", height);
+                        intent.putExtra("enableDrag", enableDrag);
+                        intent.putExtra("alignment", alignment);
+                        intent.putExtra("overlayTitle", overlayTitle);
+                        intent.putExtra("overlayContent", overlayContent);
+                        ContextCompat.startForegroundService(context, intent);
+                    } catch (Exception e) {
+                        Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
+                        e.printStackTrace();
+                        result.error("SERVICE_ERROR", "Failed to start overlay service", e.getMessage());
+                        return;
+                    }
+                 }
             }
             result.success(null);
         } else if (call.method.equals("isOverlayActive")) {
