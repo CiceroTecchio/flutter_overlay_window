@@ -312,11 +312,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     private int statusBarHeightPx() {
         if (mStatusBarHeight == -1) {
-            int statusBarHeightId = mResources.getIdentifier("status_bar_height", "dimen", "android");
+            if (mResources == null) {
+                Log.e("OverlayService", "Resources is null in statusBarHeightPx");
+                return dpToPx(DEFAULT_STATUS_BAR_HEIGHT_DP);
+            }
+            
+            try {
+                int statusBarHeightId = mResources.getIdentifier("status_bar_height", "dimen", "android");
 
-            if (statusBarHeightId > 0) {
-                mStatusBarHeight = mResources.getDimensionPixelSize(statusBarHeightId);
-            } else {
+                if (statusBarHeightId > 0) {
+                    mStatusBarHeight = mResources.getDimensionPixelSize(statusBarHeightId);
+                } else {
+                    mStatusBarHeight = dpToPx(DEFAULT_STATUS_BAR_HEIGHT_DP);
+                }
+            } catch (Exception e) {
+                Log.e("OverlayService", "Error getting status bar height: " + e.getMessage());
                 mStatusBarHeight = dpToPx(DEFAULT_STATUS_BAR_HEIGHT_DP);
             }
         }
@@ -326,11 +336,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     int navigationBarHeightPx() {
         if (mNavigationBarHeight == -1) {
-            int navBarHeightId = mResources.getIdentifier("navigation_bar_height", "dimen", "android");
+            if (mResources == null) {
+                Log.e("OverlayService", "Resources is null in navigationBarHeightPx");
+                return dpToPx(DEFAULT_NAV_BAR_HEIGHT_DP);
+            }
+            
+            try {
+                int navBarHeightId = mResources.getIdentifier("navigation_bar_height", "dimen", "android");
 
-            if (navBarHeightId > 0) {
-                mNavigationBarHeight = mResources.getDimensionPixelSize(navBarHeightId);
-            } else {
+                if (navBarHeightId > 0) {
+                    mNavigationBarHeight = mResources.getDimensionPixelSize(navBarHeightId);
+                } else {
+                    mNavigationBarHeight = dpToPx(DEFAULT_NAV_BAR_HEIGHT_DP);
+                }
+            } catch (Exception e) {
+                Log.e("OverlayService", "Error getting navigation bar height: " + e.getMessage());
                 mNavigationBarHeight = dpToPx(DEFAULT_NAV_BAR_HEIGHT_DP);
             }
         }
@@ -472,7 +492,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     private boolean inPortrait() {
-        return mResources.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
+        if (mResources == null) {
+            Log.e("OverlayService", "Resources is null in inPortrait");
+            return true; // Default to portrait as fallback
+        }
+        try {
+            return mResources.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error checking orientation: " + e.getMessage());
+            return true; // Default to portrait as fallback
+        }
     }
 
     @Override

@@ -61,7 +61,9 @@ public class FlutterOverlayWindowPlugin implements
         messenger.setMessageHandler(this);
 
         WindowSetup.messenger = messenger;
-        WindowSetup.messenger.setMessageHandler(this);
+        if (WindowSetup.messenger != null) {
+            WindowSetup.messenger.setMessageHandler(this);
+        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -170,9 +172,10 @@ public class FlutterOverlayWindowPlugin implements
                     intent.putExtra("overlayTitle", overlayTitle);
                     intent.putExtra("overlayContent", overlayContent);
                     ContextCompat.startForegroundService(context, intent);
-                } else {
-                    Log.d("OverlayPlugin", "Iniciando novo OverlayService");
-                    // Comportamento atual, iniciar serviço de sobreposição
+                            } else {
+                Log.d("OverlayPlugin", "Iniciando novo OverlayService");
+                // Comportamento atual, iniciar serviço de sobreposição
+                try {
                     final Intent intent = new Intent(context, OverlayService.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -185,6 +188,11 @@ public class FlutterOverlayWindowPlugin implements
                     intent.putExtra("overlayTitle", overlayTitle);
                     intent.putExtra("overlayContent", overlayContent);
                     ContextCompat.startForegroundService(context, intent);
+                } catch (Exception e) {
+                    Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
+                    e.printStackTrace();
+                    result.error("SERVICE_ERROR", "Failed to start overlay service", e.getMessage());
+                    return;
                 }
             }
             result.success(null);
@@ -195,26 +203,50 @@ public class FlutterOverlayWindowPlugin implements
             result.success(OverlayService.isRunning);
             return;
         } else if (call.method.equals("moveOverlay")) {
-            int x = call.argument("x");
-            int y = call.argument("y");
-            result.success(OverlayService.moveOverlay(x, y));
+            try {
+                int x = call.argument("x");
+                int y = call.argument("y");
+                result.success(OverlayService.moveOverlay(x, y));
+            } catch (Exception e) {
+                Log.e("OverlayPlugin", "Failed to move overlay: " + e.getMessage());
+                e.printStackTrace();
+                result.error("MOVE_ERROR", "Failed to move overlay", e.getMessage());
+            }
         } else if (call.method.equals("getOverlayPosition")) {
-            result.success(OverlayService.getCurrentPosition());
+            try {
+                result.success(OverlayService.getCurrentPosition());
+            } catch (Exception e) {
+                Log.e("OverlayPlugin", "Failed to get overlay position: " + e.getMessage());
+                e.printStackTrace();
+                result.error("POSITION_ERROR", "Failed to get overlay position", e.getMessage());
+            }
         } else if (call.method.equals("isDeviceLockedOrScreenOff")) {
-            result.success(isDeviceLockedOrScreenOff());
+            try {
+                result.success(isDeviceLockedOrScreenOff());
+            } catch (Exception e) {
+                Log.e("OverlayPlugin", "Failed to check device lock status: " + e.getMessage());
+                e.printStackTrace();
+                result.error("LOCK_STATUS_ERROR", "Failed to check device lock status", e.getMessage());
+            }
         } else if (call.method.equals("closeOverlay")) {
-           if (OverlayService.isRunning) {
-                Intent i = new Intent(context, OverlayService.class);
-                context.stopService(i);
-            }
+           try {
+               if (OverlayService.isRunning) {
+                    Intent i = new Intent(context, OverlayService.class);
+                    context.stopService(i);
+                }
 
-            if (LockScreenOverlayActivity.isRunning) {
-                // Envia broadcast para fechar a LockScreenOverlayActivity, caso esteja visível
-                Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
-                closeIntent.setPackage(context.getPackageName());
-                context.sendBroadcast(closeIntent);
+                if (LockScreenOverlayActivity.isRunning) {
+                    // Envia broadcast para fechar a LockScreenOverlayActivity, caso esteja visível
+                    Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
+                    closeIntent.setPackage(context.getPackageName());
+                    context.sendBroadcast(closeIntent);
+                }
+                result.success(true);
+            } catch (Exception e) {
+                Log.e("OverlayPlugin", "Failed to close overlay: " + e.getMessage());
+                e.printStackTrace();
+                result.error("CLOSE_ERROR", "Failed to close overlay", e.getMessage());
             }
-            result.success(true);
             return;
         } else {
             result.notImplemented();
@@ -224,8 +256,12 @@ public class FlutterOverlayWindowPlugin implements
 
     @Override
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
-        channel.setMethodCallHandler(null);
-        WindowSetup.messenger.setMessageHandler(null);
+        if (channel != null) {
+            channel.setMethodCallHandler(null);
+        }
+        if (WindowSetup.messenger != null) {
+            WindowSetup.messenger.setMessageHandler(null);
+        }
     }
 
     @Override
@@ -233,23 +269,34 @@ public class FlutterOverlayWindowPlugin implements
         mActivity = binding.getActivity();
         binding.addActivityResultListener(this);
         if (FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG) == null) {
-            FlutterEngineGroup enn = new FlutterEngineGroup(context);
-            DartExecutor.DartEntrypoint dEntry = new DartExecutor.DartEntrypoint(
-                    FlutterInjector.instance().flutterLoader().findAppBundlePath(),
-                    "overlayMain");
-            FlutterEngine engine = enn.createAndRunEngine(context, dEntry);
-            FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
+            try {
+                FlutterEngineGroup enn = new FlutterEngineGroup(context);
+                DartExecutor.DartEntrypoint dEntry = new DartExecutor.DartEntrypoint(
+                        FlutterInjector.instance().flutterLoader().findAppBundlePath(),
+                        "overlayMain");
+                FlutterEngine engine = enn.createAndRunEngine(context, dEntry);
+                FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
+            } catch (Exception e) {
+                Log.e("FlutterOverlayWindowPlugin", "Failed to create Flutter engine in onAttachedToActivity: " + e.getMessage());
+                e.printStackTrace();
+            }
         }
     }
 
     public boolean isDeviceLockedOrScreenOff() {
-        KeyguardManager keyguardManager = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
-        PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        try {
+            KeyguardManager keyguardManager = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
+            PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
 
-        boolean isLocked = keyguardManager != null && keyguardManager.isKeyguardLocked();
-        boolean isScreenOff = powerManager != null && !powerManager.isInteractive();
+            boolean isLocked = keyguardManager != null && keyguardManager.isKeyguardLocked();
+            boolean isScreenOff = powerManager != null && !powerManager.isInteractive();
 
-        return isLocked || isScreenOff;
+            return isLocked || isScreenOff;
+        } catch (Exception e) {
+            Log.e("OverlayPlugin", "Error checking device lock status: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
     }
 
     @Override
@@ -259,7 +306,12 @@ public class FlutterOverlayWindowPlugin implements
 
     @Override
     public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
-        onAttachedToActivity(binding);
+        try {
+            onAttachedToActivity(binding);
+        } catch (Exception e) {
+            Log.e("FlutterOverlayWindowPlugin", "Error in onReattachedToActivityForConfigChanges: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -277,21 +329,33 @@ public class FlutterOverlayWindowPlugin implements
     }
 
     private boolean checkOverlayPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            return Settings.canDrawOverlays(context);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                return Settings.canDrawOverlays(context);
+            }
+            return true;
+        } catch (Exception e) {
+            Log.e("OverlayPlugin", "Error checking overlay permission: " + e.getMessage());
+            e.printStackTrace();
+            return false;
         }
-        return true;
     }
 
    @Override
     public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == REQUEST_CODE_FOR_OVERLAY_PERMISSION) {
-            if (pendingResult != null) {
-                pendingResult.success(checkOverlayPermission());
-                pendingResult = null;  // evita chamadas múltiplas
+        try {
+            if (requestCode == REQUEST_CODE_FOR_OVERLAY_PERMISSION) {
+                if (pendingResult != null) {
+                    pendingResult.success(checkOverlayPermission());
+                    pendingResult = null;  // evita chamadas múltiplas
+                }
+                return true;
             }
-            return true;
+            return false;
+        } catch (Exception e) {
+            Log.e("OverlayPlugin", "Error in onActivityResult: " + e.getMessage());
+            e.printStackTrace();
+            return false;
         }
-        return false;
     }
 }
