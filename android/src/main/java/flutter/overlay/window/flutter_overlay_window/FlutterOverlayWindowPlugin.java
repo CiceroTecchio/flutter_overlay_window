@@ -172,7 +172,7 @@ public class FlutterOverlayWindowPlugin implements
                     intent.putExtra("overlayTitle", overlayTitle);
                     intent.putExtra("overlayContent", overlayContent);
                     ContextCompat.startForegroundService(context, intent);
-                 else {
+                } else {
                     Log.d("OverlayPlugin", "Iniciando novo OverlayService");
                     // Comportamento atual, iniciar serviço de sobreposição
                     try {
@@ -194,7 +194,7 @@ public class FlutterOverlayWindowPlugin implements
                         result.error("SERVICE_ERROR", "Failed to start overlay service", e.getMessage());
                         return;
                     }
-                 }
+                }
             }
             result.success(null);
         } else if (call.method.equals("isOverlayActive")) {
