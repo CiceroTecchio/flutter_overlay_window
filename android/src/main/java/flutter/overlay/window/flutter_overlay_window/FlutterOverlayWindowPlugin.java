@@ -171,7 +171,7 @@ public class FlutterOverlayWindowPlugin implements
                     intent.putExtra("alignment", alignment);
                     intent.putExtra("overlayTitle", overlayTitle);
                     intent.putExtra("overlayContent", overlayContent);
-                    ContextCompat.startService(context, intent);
+                    context.startService(intent);
                 } else {
                     Log.d("OverlayPlugin", "Iniciando novo OverlayService");
                     // Comportamento atual, iniciar serviço de sobreposição
