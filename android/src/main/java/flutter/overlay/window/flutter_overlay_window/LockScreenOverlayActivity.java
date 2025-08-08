@@ -56,6 +56,7 @@ public class LockScreenOverlayActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
+            setFinishOnTouchOutside(false);
         }
 
         getWindow().addFlags(
@@ -154,9 +155,14 @@ public class LockScreenOverlayActivity extends Activity {
         return (int) (dp * resources.getDisplayMetrics().density);
     }
     @Override
-protected void onNewIntent(Intent intent) {
-    super.onNewIntent(intent);
-    Log.d("LockScreenOverlay", "onNewIntent chamado – activity reordenada para frente.");
-    setIntent(intent); // Atualiza intent se quiser usar extras
-}
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        Log.d("LockScreenOverlay", "onNewIntent chamado – activity reordenada para frente.");
+        setIntent(intent); // Atualiza intent se quiser usar extras
+    }
+    @Override
+    public void onBackPressed() {
+        // Não chama super, assim botão voltar não fecha
+        Log.d("LockScreenOverlay", "Botão voltar desativado");
+    }
 }
