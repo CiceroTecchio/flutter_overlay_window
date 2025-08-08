@@ -28,6 +28,7 @@ import io.flutter.plugin.common.JSONMessageCodec;
 public class LockScreenOverlayActivity extends Activity {
     private FlutterView flutterView;
     private FlutterEngine flutterEngine;
+    private MethodChannel flutterChannel;
     private BasicMessageChannel<Object> overlayMessageChannel;
     private Resources resources;
     public static boolean isRunning = false;
