@@ -28,7 +28,6 @@ import io.flutter.plugin.common.JSONMessageCodec;
 public class LockScreenOverlayActivity extends Activity {
     private FlutterView flutterView;
     private FlutterEngine flutterEngine;
-    private MethodChannel flutterChannel;
     private BasicMessageChannel<Object> overlayMessageChannel;
     private Resources resources;
     public static boolean isRunning = false;
@@ -82,18 +81,7 @@ public class LockScreenOverlayActivity extends Activity {
         flutterEngine.getLifecycleChannel().appIsResumed();
 
         isRunning = true;
-        flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
         overlayMessageChannel = new BasicMessageChannel<>(flutterEngine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
-
-        flutterChannel.setMethodCallHandler((call, result) -> {
-            if ("close".equals(call.method)) {
-                finish();
-                isRunning = false;
-                result.success(true);
-            } else {
-                result.notImplemented();
-            }
-        });
 
         overlayMessageChannel.setMessageHandler((message, reply) -> {
             WindowSetup.messenger.send(message);
