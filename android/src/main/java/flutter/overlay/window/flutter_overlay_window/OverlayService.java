@@ -80,39 +80,20 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private Point szWindow = new Point();
     private Timer mTrayAnimationTimer;
     private TrayAnimationTimerTask mTrayTimerTask;
-    private boolean screenOn = false;
     private boolean userPresent = false;
 
     private BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            if (Intent.ACTION_SCREEN_ON.equals(action)) {
-                screenOn = true;
-                updateFlutterLifecycle();
-                Log.d("OverlayService", "Tela ligada");
-            } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
-                screenOn = false;
-                updateFlutterLifecycle();
-                Log.d("OverlayService", "Tela desligada");
-            } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                userPresent = true;
-                updateFlutterLifecycle();
-                Log.d("OverlayService", "Usuário desbloqueou o dispositivo");
+            if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+                if (flutterEngine == null) return;
+                flutterEngine.getLifecycleChannel().appIsResumed();
             }
         }
     };
-
-    private void updateFlutterLifecycle() {
-            FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-        if (flutterEngine == null) return;
-
-        if (screenOn && userPresent) {
-            // Tela ligada e desbloqueada: app ativo
-            flutterEngine.getLifecycleChannel().appIsResumed();
-        }
-    }
-
+    
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {

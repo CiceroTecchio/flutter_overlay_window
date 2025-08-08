@@ -40,17 +40,28 @@ public class LockScreenOverlayActivity extends Activity {
             isRunning = false;
         }
     };
+    private BroadcastReceiver unlockReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_USER_PRESENT.equals(intent.getAction())) {
+                Log.d("LockScreenOverlay", "Usuário desbloqueou - fechando Activity");
+                finish();
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Log.d("LockScreenOverlay", "onCreate chamado");
         IntentFilter filter = new IntentFilter("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
-
+        IntentFilter filterUnlock = new IntentFilter(Intent.ACTION_USER_PRESENT);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(closeReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(unlockReceiver, filterUnlock, Context.RECEIVER_NOT_EXPORTED);
         } else {
             registerReceiver(closeReceiver, filter);
+            registerReceiver(unlockReceiver, filterUnlock);
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
