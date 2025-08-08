@@ -40,12 +40,16 @@ public class LockScreenOverlayActivity extends Activity {
             isRunning = false;
         }
     };
-    private BroadcastReceiver unlockReceiver = new BroadcastReceiver() {
+    private BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (Intent.ACTION_USER_PRESENT.equals(intent.getAction())) {
-                Log.d("LockScreenOverlay", "Usuário desbloqueou - fechando Activity");
-                finish();
+            String action = intent.getAction();
+            if (Intent.ACTION_SCREEN_ON.equals(action)) {
+                KeyguardManager km = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+                if (km != null && !km.isKeyguardLocked()) {
+                    Log.d("LockScreenOverlay", "Dispositivo desbloqueado - fechando Activity");
+                    finish();
+                }
             }
         }
     };
@@ -55,13 +59,13 @@ public class LockScreenOverlayActivity extends Activity {
         super.onCreate(savedInstanceState);
         Log.d("LockScreenOverlay", "onCreate chamado");
         IntentFilter filter = new IntentFilter("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
-        IntentFilter filterUnlock = new IntentFilter(Intent.ACTION_USER_PRESENT);
+        IntentFilter filterUnlock = new IntentFilter(Intent.ACTION_SCREEN_ON);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(closeReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-            registerReceiver(unlockReceiver, filterUnlock, Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(screenReceiver, filterUnlock, Context.RECEIVER_NOT_EXPORTED);
         } else {
             registerReceiver(closeReceiver, filter);
-            registerReceiver(unlockReceiver, filterUnlock);
+            registerReceiver(screenReceiver, filterUnlock);
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -143,6 +147,7 @@ public class LockScreenOverlayActivity extends Activity {
     public void onDestroy() {
         super.onDestroy();
         unregisterReceiver(closeReceiver);
+        unregisterReceiver(screenReceiver);
         Log.d("LockScreenOverlay", "Destroying the overlay lock screen window service");
         try{
             FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
@@ -175,5 +180,14 @@ public class LockScreenOverlayActivity extends Activity {
     public void onBackPressed() {
         // Não chama super, assim botão voltar não fecha
         Log.d("LockScreenOverlay", "Botão voltar desativado");
+    }
+    @Override
+    protected void onResume() {
+        super.onResume();
+        KeyguardManager km = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+        if (km != null && !km.isKeyguardLocked()) {
+            Log.d("LockScreenOverlay", "Tela já estava ligada e usuário acabou de desbloquear");
+            finish();
+        }
     }
 }
