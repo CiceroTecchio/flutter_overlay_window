@@ -183,17 +183,20 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 windowManager = null;
                 stopSelf();
         }
+
         isRunning = true;
         Log.d("onStartCommand", "Service started");
+
         FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+        if (engine == null) {
+            Log.e("OverlayService", "FlutterEngine não encontrado no cache");
+            return;
+        }
         engine.getLifecycleChannel().appIsResumed();
-        flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
-        flutterView.attachToFlutterEngine(FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG));
-        flutterView.setFitsSystemWindows(true);
-        flutterView.setFocusable(true);
-        flutterView.setFocusableInTouchMode(true);
-        flutterView.setBackgroundColor(Color.TRANSPARENT);
-        flutterChannel.setMethodCallHandler((call, result) -> {
+
+        if (flutterChannel == null) {
+            flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
+            flutterChannel.setMethodCallHandler((call, result) -> {
                 switch (call.method) {
                     case "updateFlag":
                         String flag = call.argument("flag");
@@ -214,12 +217,31 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         result.notImplemented();
                 }
             });
+        }
 
         if (overlayMessageChannel == null) {
             overlayMessageChannel = new BasicMessageChannel<>(engine.getDartExecutor(),
                     OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
         }
         overlayMessageChannel.setMessageHandler((message, reply) -> WindowSetup.messenger.send(message));
+
+
+            if (flutterView != null) {
+                flutterView.detachFromFlutterEngine();
+                if (windowManager != null) {
+                    windowManager.removeView(flutterView);
+                    windowManager = null;
+                }
+            }
+
+            flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
+            flutterView.attachToFlutterEngine(engine);
+            flutterView.setFitsSystemWindows(true);
+            flutterView.setFocusable(true);
+            flutterView.setFocusableInTouchMode(true);
+            flutterView.setBackgroundColor(Color.TRANSPARENT);
+            flutterView.setOnTouchListener(this);
+
             // Define tamanho da tela
             windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -264,7 +286,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
             }
             params.gravity = WindowSetup.gravity;
-            flutterView.setOnTouchListener(this);
+
             windowManager.addView(flutterView, params);
             moveOverlayInternal(dx, dy, null);
     }
