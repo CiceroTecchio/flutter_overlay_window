@@ -474,6 +474,27 @@ public class OverlayService extends Service implements View.OnTouchListener {
             overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(),
                     OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
         }
+         flutterChannel.setMethodCallHandler((call, result) -> {
+                switch (call.method) {
+                    case "updateFlag":
+                        String flag = call.argument("flag");
+                        updateOverlayFlag(result, flag);
+                        break;
+                    case "updateOverlayPosition":
+                        int x = call.argument("x");
+                        int y = call.argument("y");
+                        moveOverlayInternal(x, y, result);
+                        break;
+                    case "resizeOverlay":
+                        int width = call.argument("width");
+                        int height = call.argument("height");
+                        boolean enableDrag = call.argument("enableDrag");
+                        resizeOverlay(width, height, enableDrag, result);
+                        break;
+                    default:
+                        result.notImplemented();
+                }
+            });
 
         // 🔹 1. Criar canal e notificação rapidamente
         createNotificationChannel();
