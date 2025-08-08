@@ -30,6 +30,7 @@ import android.view.WindowManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.content.IntentFilter;
+import android.content.BroadcastReceiver;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
