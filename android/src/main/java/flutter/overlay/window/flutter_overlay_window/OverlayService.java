@@ -170,6 +170,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.d("OverlayService", "Overlay já ativo, trazido para frente.");
             return START_STICKY;
         } else if ("RESUME_OVERLAY".equals(action)) {
+            FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
             if (flutterView != null && flutterEngine != null) {
                 flutterView.attachToFlutterEngine(flutterEngine);
                 flutterView.invalidate();
