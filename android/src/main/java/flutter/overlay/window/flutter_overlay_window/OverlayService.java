@@ -105,6 +105,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     };
 
     private void updateFlutterLifecycle() {
+            FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         if (flutterEngine == null) return;
 
         if (screenOn && userPresent) {
