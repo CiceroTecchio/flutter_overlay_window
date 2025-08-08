@@ -160,25 +160,6 @@ public class FlutterOverlayWindowPlugin implements
                     context.startActivity(lockIntent);
                 }
             } else {
-                if (OverlayService.isRunning) {
-                    Log.d("OverlayPlugin", "OverlayService já está rodando, enviando comando para exibir novamente.");
-
-                    Intent intent = new Intent(context, OverlayService.class);
-                    intent.setAction("SHOW_OVERLAY_AGAIN");
-                    intent.putExtra("startX", startX);
-                    intent.putExtra("startY", startY);
-                    intent.putExtra("width", width);
-                    intent.putExtra("height", height);
-                    intent.putExtra("enableDrag", enableDrag);
-                    intent.putExtra("alignment", alignment);
-                    intent.putExtra("overlayTitle", overlayTitle);
-                    intent.putExtra("overlayContent", overlayContent);
-                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                        ContextCompat.startForegroundService(context, intent);
-                    }, 500);
-                } else {
-                    Log.d("OverlayPlugin", "Iniciando novo OverlayService");
-                    // Comportamento atual, iniciar serviço de sobreposição
                     try {
                         final Intent intent = new Intent(context, OverlayService.class);
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -191,16 +172,13 @@ public class FlutterOverlayWindowPlugin implements
                         intent.putExtra("alignment", alignment);
                         intent.putExtra("overlayTitle", overlayTitle);
                         intent.putExtra("overlayContent", overlayContent);
-                        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                            context.startService(intent);
-                        }, 500);
+                        context.startService(intent);
                     } catch (Exception e) {
                         Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
                         e.printStackTrace();
                         result.error("SERVICE_ERROR", "Failed to start overlay service", e.getMessage());
                         return;
                     }
-                }
             }
             result.success(null);
         } else if (call.method.equals("isOverlayActive")) {
