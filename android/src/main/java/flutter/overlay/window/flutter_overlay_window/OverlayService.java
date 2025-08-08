@@ -154,40 +154,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
             return START_STICKY;
         }
 
-        // 🔹 1. Criar canal e notificação rapidamente
-        createNotificationChannel();
-        Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
-        int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                ? PendingIntent.FLAG_IMMUTABLE
-                : PendingIntent.FLAG_UPDATE_CURRENT;
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingFlags);
-
-        int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
-        Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
-                .setContentTitle(WindowSetup.overlayTitle)
-                .setContentText(WindowSetup.overlayContent)
-                .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
-                .setContentIntent(pendingIntent)
-                .setVisibility(WindowSetup.notificationVisibility)
-                .setOngoing(true)
-                .setSound(null)
-                .setVibrate(new long[]{0L})
-                .build();
-        notification.flags |= Notification.FLAG_NO_CLEAR;
-
-        if (Build.VERSION.SDK_INT >= 34) {
-            int foregroundType = 0;
-            try {
-                foregroundType = (int) ServiceInfo.class
-                        .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
-        } else {
-            startForeground(OverlayConstants.NOTIFICATION_ID, notification);
-        }
-
         mResources = getApplicationContext().getResources();
 
         new Handler(Looper.getMainLooper()).post(() -> initOverlay(intent));
@@ -515,6 +481,41 @@ public class OverlayService extends Service implements View.OnTouchListener {
             overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(),
                     OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
         }
+
+        // 🔹 1. Criar canal e notificação rapidamente
+        createNotificationChannel();
+        Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+        int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ? PendingIntent.FLAG_IMMUTABLE
+                : PendingIntent.FLAG_UPDATE_CURRENT;
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingFlags);
+
+        int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
+        Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
+                .setContentTitle(WindowSetup.overlayTitle)
+                .setContentText(WindowSetup.overlayContent)
+                .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
+                .setContentIntent(pendingIntent)
+                .setVisibility(WindowSetup.notificationVisibility)
+                .setOngoing(true)
+                .setSound(null)
+                .setVibrate(new long[]{0L})
+                .build();
+        notification.flags |= Notification.FLAG_NO_CLEAR;
+
+        if (Build.VERSION.SDK_INT >= 34) {
+            int foregroundType = 0;
+            try {
+                foregroundType = (int) ServiceInfo.class
+                        .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
+        } else {
+            startForeground(OverlayConstants.NOTIFICATION_ID, notification);
+        }
+
         instance = this;
     }
 
