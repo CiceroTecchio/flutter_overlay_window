@@ -51,10 +51,12 @@ public class FlutterOverlayWindowPlugin implements
     private BasicMessageChannel<Object> messenger;
     private Result pendingResult;
     final int REQUEST_CODE_FOR_OVERLAY_PERMISSION = 1248;
+    private BroadcastReceiver screenUnlockReceiver;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
         this.context = flutterPluginBinding.getApplicationContext();
+        registerScreenUnlockReceiver();
         channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), OverlayConstants.CHANNEL_TAG);
         channel.setMethodCallHandler(this);
 
@@ -66,6 +68,35 @@ public class FlutterOverlayWindowPlugin implements
         if (WindowSetup.messenger != null) {
             WindowSetup.messenger.setMessageHandler(this);
         }
+    }
+
+    private void registerScreenUnlockReceiver() {
+        if (screenUnlockReceiver != null) return; // já registrado
+
+        screenUnlockReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                    Log.d("FlutterOverlayWindowPlugin", "Usuário desbloqueou a tela");
+                    // Envia broadcast para fechar LockScreenOverlayActivity
+                    Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
+                    closeIntent.setPackage(context.getPackageName());
+                    context.sendBroadcast(closeIntent);
+
+                    try {
+                        Intent intent = new Intent(context, OverlayService.class);
+                        intent.setAction("RESUME_OVERLAY");
+                        context.startService(intent);
+                    } catch (Exception e) {
+                        Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
+                        e.printStackTrace();
+                    }   
+                }
+            }
+        };
+        IntentFilter filter = new IntentFilter(Intent.ACTION_USER_PRESENT);
+        context.registerReceiver(screenUnlockReceiver, filter);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -254,6 +285,13 @@ public class FlutterOverlayWindowPlugin implements
         }
         if (WindowSetup.messenger != null) {
             WindowSetup.messenger.setMessageHandler(null);
+        }
+        if (screenUnlockReceiver != null) {
+            try {
+                context.unregisterReceiver(screenUnlockReceiver);
+            } catch (IllegalArgumentException e) {
+            }
+            screenUnlockReceiver = null;
         }
     }
 

@@ -93,7 +93,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
         }
     };
-    
+
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
@@ -152,9 +152,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
         if (intent == null) {
             return START_NOT_STICKY;
         }
+        String action = intent.getAction();
 
         // 🔹 Se overlay já ativo e ação for apenas trazer para frente
-        if (windowManager != null && flutterView != null && "SHOW_OVERLAY_AGAIN".equals(intent.getAction())) {
+        if (windowManager != null && flutterView != null && "SHOW_OVERLAY_AGAIN".equals(action)) {
             int width = intent.getIntExtra("width", 300);
             int height = intent.getIntExtra("height", 300);
             boolean enableDrag = intent.getBooleanExtra("enableDrag", false);
@@ -167,6 +168,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
             moveOverlayInternal(dx, dy, null);
             bringOverlayToFront();
             Log.d("OverlayService", "Overlay já ativo, trazido para frente.");
+            return START_STICKY;
+        } else if ("RESUME_OVERLAY".equals(action)) {
+            if (flutterView != null && flutterEngine != null) {
+                flutterView.attachToFlutterEngine(flutterEngine);
+                flutterView.invalidate();
+                flutterEngine.getLifecycleChannel().appIsResumed();
+                Log.d("OverlayService", "FlutterView resumido e redraw feito.");
+            } else {
+                Log.w("OverlayService", "flutterView ou flutterEngine nulos ao tentar resumir.");
+            }
             return START_STICKY;
         }
 
