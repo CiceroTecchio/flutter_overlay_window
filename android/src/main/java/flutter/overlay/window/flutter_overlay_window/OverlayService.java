@@ -84,7 +84,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-        FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+            FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
             if (Intent.ACTION_USER_PRESENT.equals(action)) {
                 Log.d("OverlayService", "Usuário desbloqueou o dispositivo");
                 if (flutterEngine != null) {
