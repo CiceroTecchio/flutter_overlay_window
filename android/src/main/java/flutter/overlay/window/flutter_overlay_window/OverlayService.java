@@ -128,16 +128,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
         super.onDestroy();
     }
 
-
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
     @Override
     public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
-        // Verifica se o intent é nulo
-        if (null == intent) {
+        if (intent == null) {
             return START_NOT_STICKY;
         }
-        
-        // Se overlay já ativo e ação é "SHOW_OVERLAY_AGAIN", só traga para frente e saia
+
+        // 🔹 Se overlay já ativo e ação for apenas trazer para frente
         if (windowManager != null && flutterView != null && "SHOW_OVERLAY_AGAIN".equals(intent.getAction())) {
             int width = intent.getIntExtra("width", 300);
             int height = intent.getIntExtra("height", 300);
@@ -154,19 +152,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
             return START_STICKY;
         }
 
+        // 🔹 1. Criar canal e notificação rapidamente
         createNotificationChannel();
-
-        Intent notificationIntent = getPackageManager()
-        .getLaunchIntentForPackage(getPackageName());
+        Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
         int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                 ? PendingIntent.FLAG_IMMUTABLE
                 : PendingIntent.FLAG_UPDATE_CURRENT;
-
-        PendingIntent pendingIntent = PendingIntent.getActivity(this,
-                0, notificationIntent, pendingFlags);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingFlags);
 
         int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
-
         Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
                 .setContentTitle(WindowSetup.overlayTitle)
                 .setContentText(WindowSetup.overlayContent)
@@ -174,10 +168,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 .setContentIntent(pendingIntent)
                 .setVisibility(WindowSetup.notificationVisibility)
                 .setOngoing(true)
-                .setSound(null) // garante sem som também aqui
-                .setVibrate(new long[]{0L}) // sem vibração
+                .setSound(null)
+                .setVibrate(new long[]{0L})
                 .build();
-
         notification.flags |= Notification.FLAG_NO_CLEAR;
 
         if (Build.VERSION.SDK_INT >= 34) {
@@ -192,123 +185,153 @@ public class OverlayService extends Service implements View.OnTouchListener {
         } else {
             startForeground(OverlayConstants.NOTIFICATION_ID, notification);
         }
+
         mResources = getApplicationContext().getResources();
+
+        // 🔹 2. Processamento pesado em background
+        new Thread(() -> initOverlay(intent)).start();
+
+        return START_STICKY;
+    }
+
+    private void initOverlay(Intent intent) {
         int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
         int startY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
         boolean isCloseWindow = intent.getBooleanExtra(INTENT_EXTRA_IS_CLOSE_WINDOW, false);
+
         if (isCloseWindow) {
             if (windowManager != null) {
-                windowManager.removeView(flutterView);
-                windowManager = null;
-                flutterView.detachFromFlutterEngine();
-                stopSelf();
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    windowManager.removeView(flutterView);
+                    flutterView.detachFromFlutterEngine();
+                    windowManager = null;
+                    stopSelf();
+                });
             }
             isRunning = false;
-            return START_STICKY;
+            return;
         }
+
         if (windowManager != null && flutterView != null) {
-            windowManager.removeView(flutterView);
-            windowManager = null;
-            flutterView.detachFromFlutterEngine();
-            stopSelf();
+            new Handler(Looper.getMainLooper()).post(() -> {
+                windowManager.removeView(flutterView);
+                flutterView.detachFromFlutterEngine();
+                windowManager = null;
+                stopSelf();
+            });
         }
+
         isRunning = true;
         Log.d("onStartCommand", "Service started");
+
         FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         if (engine == null) {
-            return START_STICKY;
+            Log.e("OverlayService", "FlutterEngine não encontrado no cache");
+            return;
+        }
+
+        if (flutterChannel == null) {
+            flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
+            flutterChannel.setMethodCallHandler((call, result) -> {
+                switch (call.method) {
+                    case "updateFlag":
+                        String flag = call.argument("flag");
+                        updateOverlayFlag(result, flag);
+                        break;
+                    case "updateOverlayPosition":
+                        int x = call.argument("x");
+                        int y = call.argument("y");
+                        moveOverlayInternal(x, y, result);
+                        break;
+                    case "resizeOverlay":
+                        int width = call.argument("width");
+                        int height = call.argument("height");
+                        boolean enableDrag = call.argument("enableDrag");
+                        resizeOverlay(width, height, enableDrag, result);
+                        break;
+                    default:
+                        result.notImplemented();
+                }
+            });
         }
 
         if (flutterChannel == null) {
             flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
         }
-        
         engine.getLifecycleChannel().appIsResumed();
-        
-        if (flutterView != null) {
-            flutterView.detachFromFlutterEngine();
-            if (windowManager != null) {
-                windowManager.removeView(flutterView);
-                windowManager = null;
-            }
-        }
 
-        flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
-        flutterView.attachToFlutterEngine(engine);
-        flutterView.setFitsSystemWindows(true);
-        flutterView.setFocusable(true);
-        flutterView.setFocusableInTouchMode(true);
-        flutterView.setBackgroundColor(Color.TRANSPARENT);
-        flutterChannel.setMethodCallHandler((call, result) -> {
-            if (call.method.equals("updateFlag")) {
-                String flag = call.argument("flag").toString();
-                updateOverlayFlag(result, flag);
-            } else if (call.method.equals("updateOverlayPosition")) {
-                int x = call.<Integer>argument("x");
-                int y = call.<Integer>argument("y");
-                moveOverlayInternal(x, y, result);
-            } else if (call.method.equals("resizeOverlay")) {
-                int width = call.argument("width");
-                int height = call.argument("height");
-                boolean enableDrag = call.argument("enableDrag");
-                resizeOverlay(width, height, enableDrag, result);
-            }
-        });
         if (overlayMessageChannel == null) {
-            overlayMessageChannel = new BasicMessageChannel<Object>(engine.getDartExecutor(),
+            overlayMessageChannel = new BasicMessageChannel<>(engine.getDartExecutor(),
                     OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
         }
-        overlayMessageChannel.setMessageHandler((message, reply) -> {
-            WindowSetup.messenger.send(message);
+        overlayMessageChannel.setMessageHandler((message, reply) -> WindowSetup.messenger.send(message));
+
+        // 🔹 3. Criar e adicionar o FlutterView no thread principal
+        new Handler(Looper.getMainLooper()).post(() -> {
+            if (flutterView != null) {
+                flutterView.detachFromFlutterEngine();
+                if (windowManager != null) {
+                    windowManager.removeView(flutterView);
+                    windowManager = null;
+                }
+            }
+
+            flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
+            flutterView.attachToFlutterEngine(engine);
+            flutterView.setFitsSystemWindows(true);
+            flutterView.setFocusable(true);
+            flutterView.setFocusableInTouchMode(true);
+            flutterView.setBackgroundColor(Color.TRANSPARENT);
+            flutterView.setOnTouchListener(this);
+
+            // Define tamanho da tela
+            windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                WindowMetrics metrics = windowManager.getCurrentWindowMetrics();
+                Insets insets = metrics.getWindowInsets()
+                        .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars());
+                int w = metrics.getBounds().width() - insets.left - insets.right;
+                int h = metrics.getBounds().height() - insets.top - insets.bottom;
+                szWindow.set(w, h);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                windowManager.getDefaultDisplay().getSize(szWindow);
+            } else {
+                DisplayMetrics displaymetrics = new DisplayMetrics();
+                windowManager.getDefaultDisplay().getMetrics(displaymetrics);
+                szWindow.set(displaymetrics.widthPixels, displaymetrics.heightPixels);
+            }
+
+            int width = intent.getIntExtra("width", WindowSetup.width);
+            int height = intent.getIntExtra("height", screenHeight());
+            int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : startX;
+            int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : startY;
+            int layoutWidth = (width == -1999 || width == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(width);
+            int layoutHeight = (height == -1999 || height == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(height);
+
+            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                    layoutWidth,
+                    layoutHeight,
+                    0,
+                    -statusBarHeightPx(),
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                            ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                            : WindowManager.LayoutParams.TYPE_PHONE,
+                    WindowSetup.flag
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR
+                            | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                    PixelFormat.TRANSLUCENT
+            );
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
+                params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
+            }
+            params.gravity = WindowSetup.gravity;
+
+            windowManager.addView(flutterView, params);
+            moveOverlayInternal(dx, dy, null);
         });
-        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { // Android 11+
-            WindowMetrics metrics = windowManager.getCurrentWindowMetrics();
-            Insets insets = metrics.getWindowInsets()
-                    .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars());
-            int w = metrics.getBounds().width() - insets.left - insets.right;
-            int h = metrics.getBounds().height() - insets.top - insets.bottom;
-            szWindow.set(w, h);
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) { // Android 3.0+
-            windowManager.getDefaultDisplay().getSize(szWindow);
-        } else { // Android < 3.0
-            DisplayMetrics displaymetrics = new DisplayMetrics();
-            windowManager.getDefaultDisplay().getMetrics(displaymetrics);
-            int w = displaymetrics.widthPixels;
-            int h = displaymetrics.heightPixels;
-            szWindow.set(w, h);
-        }
-
-        int width = intent.getIntExtra("width", WindowSetup.width);
-        int height = intent.getIntExtra("height", screenHeight());
-
-        int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : startX;
-        int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : startY;
-        int layoutWidth = (width == -1999 || width == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(width);
-        int layoutHeight = (height == -1999 || height == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(height);
-
-       WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-        layoutWidth,
-        layoutHeight,
-        0,
-        -statusBarHeightPx(),
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                : WindowManager.LayoutParams.TYPE_PHONE,
-        WindowSetup.flag | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                | WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR
-                | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-        PixelFormat.TRANSLUCENT);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
-            params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
-        }
-        params.gravity = WindowSetup.gravity;
-        flutterView.setOnTouchListener(this);
-        windowManager.addView(flutterView, params);
-        moveOverlayInternal(dx, dy, null);
-
-        return START_STICKY;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
