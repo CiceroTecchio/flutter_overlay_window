@@ -257,11 +257,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
             });
         }
 
-        if (flutterChannel == null) {
-            flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
-        }
-        engine.getLifecycleChannel().appIsResumed();
-
         if (overlayMessageChannel == null) {
             overlayMessageChannel = new BasicMessageChannel<>(engine.getDartExecutor(),
                     OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
@@ -270,6 +265,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         // 🔹 3. Criar e adicionar o FlutterView no thread principal
         new Handler(Looper.getMainLooper()).post(() -> {
+            engine.getLifecycleChannel().appIsResumed();
+            
             if (flutterView != null) {
                 flutterView.detachFromFlutterEngine();
                 if (windowManager != null) {
