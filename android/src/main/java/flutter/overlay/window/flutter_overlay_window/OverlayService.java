@@ -156,7 +156,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         createNotificationChannel();
 
-        Intent notificationIntent = new Intent(this, MainActivity.class);
+        Intent notificationIntent = getPackageManager()
+        .getLaunchIntentForPackage(getPackageName());
         int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                 ? PendingIntent.FLAG_IMMUTABLE
                 : PendingIntent.FLAG_UPDATE_CURRENT;
