@@ -190,8 +190,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         mResources = getApplicationContext().getResources();
 
-        // 🔹 2. Processamento pesado em background
-        new Thread(() -> initOverlay(intent)).start();
+        new Handler(Looper.getMainLooper()).post(() -> initOverlay(intent));
 
         return START_STICKY;
     }
@@ -266,7 +265,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // 🔹 3. Criar e adicionar o FlutterView no thread principal
         new Handler(Looper.getMainLooper()).post(() -> {
             engine.getLifecycleChannel().appIsResumed();
-            
+
             if (flutterView != null) {
                 flutterView.detachFromFlutterEngine();
                 if (windowManager != null) {
