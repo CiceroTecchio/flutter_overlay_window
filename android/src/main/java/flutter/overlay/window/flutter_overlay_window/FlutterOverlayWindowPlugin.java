@@ -160,42 +160,49 @@ public class FlutterOverlayWindowPlugin implements
                     context.startActivity(lockIntent);
                 }
             } else {
-                    try {
-                        final Intent intent = new Intent(context, OverlayService.class);
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                        intent.putExtra("startX", startX);
-                        intent.putExtra("startY", startY);
-                        intent.putExtra("width", width);
-                        intent.putExtra("height", height);
-                        intent.putExtra("enableDrag", enableDrag);
-                        intent.putExtra("alignment", alignment);
-                        intent.putExtra("overlayTitle", overlayTitle);
-                        intent.putExtra("overlayContent", overlayContent);
-                        context.startService(intent);
-                    } catch (Exception e) {
-                        Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
-                        e.printStackTrace();
-                        result.error("SERVICE_ERROR", "Failed to start overlay service", e.getMessage());
-                        return;
-                    }
+                try {
+                    final Intent intent = new Intent(context, OverlayService.class);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    intent.putExtra("startX", startX);
+                    intent.putExtra("startY", startY);
+                    intent.putExtra("width", width);
+                    intent.putExtra("height", height);
+                    intent.putExtra("enableDrag", enableDrag);
+                    intent.putExtra("alignment", alignment);
+                    intent.putExtra("overlayTitle", overlayTitle);
+                    intent.putExtra("overlayContent", overlayContent);
+                    context.startService(intent);
+                } catch (Exception e) {
+                    Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
+                    e.printStackTrace();
+                    result.error("SERVICE_ERROR", "Failed to start overlay service", e.getMessage());
+                    return;
+                }
             }
             result.success(null);
         } else if (call.method.equals("isOverlayActive")) {
             result.success(OverlayService.isRunning);
             return;
-        } else if (call.method.equals("isOverlayActive")) {
-            result.success(OverlayService.isRunning);
-            return;
         } else if (call.method.equals("moveOverlay")) {
-            try {
-                int x = call.argument("x");
-                int y = call.argument("y");
-                result.success(OverlayService.moveOverlay(x, y));
-            } catch (Exception e) {
-                Log.e("OverlayPlugin", "Failed to move overlay: " + e.getMessage());
-                e.printStackTrace();
-                result.error("MOVE_ERROR", "Failed to move overlay", e.getMessage());
+            if (OverlayService.isRunning) {
+                try {
+                    int x = call.argument("x");
+                    int y = call.argument("y");
+                    result.success(OverlayService.moveOverlay(x, y));
+                } catch (Exception e) {
+                    Log.e("OverlayPlugin", "Failed to move overlay: " + e.getMessage());
+                    e.printStackTrace();
+                    result.error("MOVE_ERROR", "Failed to move overlay", e.getMessage());
+                }
+            }
+
+            if (LockScreenOverlayActivity.isRunning) {
+                // Envia broadcast para fechar a LockScreenOverlayActivity, caso esteja visível
+                Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
+                closeIntent.setPackage(context.getPackageName());
+                context.sendBroadcast(closeIntent);
+                result.success(true);
             }
         } else if (call.method.equals("getOverlayPosition")) {
             try {
