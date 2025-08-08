@@ -37,6 +37,7 @@ public class LockScreenOverlayActivity extends Activity {
         public void onReceive(Context context, Intent intent) {
             Log.d("LockScreenOverlay", "Broadcast recebido, fechando activity");
             finish();
+            isRunning = false;
         }
     };
 
@@ -74,6 +75,7 @@ public class LockScreenOverlayActivity extends Activity {
         if (flutterEngine == null) {
             Log.e("LockScreenOverlay", "FlutterEngine não encontrado");
             finish();
+            isRunning = false;
             return;
         }
         flutterEngine.getLifecycleChannel().appIsResumed();
@@ -85,6 +87,7 @@ public class LockScreenOverlayActivity extends Activity {
         flutterChannel.setMethodCallHandler((call, result) -> {
             if ("close".equals(call.method)) {
                 finish();
+                isRunning = false;
                 result.success(true);
             } else {
                 result.notImplemented();

@@ -13,6 +13,8 @@ import android.view.WindowManager;
 import android.os.PowerManager;
 import android.app.KeyguardManager;
 import androidx.core.content.ContextCompat;
+import android.os.Handler;
+import android.os.Looper;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -187,7 +189,9 @@ public class FlutterOverlayWindowPlugin implements
                         intent.putExtra("alignment", alignment);
                         intent.putExtra("overlayTitle", overlayTitle);
                         intent.putExtra("overlayContent", overlayContent);
-                        ContextCompat.startForegroundService(context, intent);
+                        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                            ContextCompat.startForegroundService(context, intent);
+                        }, 500);
                     } catch (Exception e) {
                         Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
                         e.printStackTrace();
