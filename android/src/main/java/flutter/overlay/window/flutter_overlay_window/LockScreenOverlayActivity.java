@@ -24,6 +24,7 @@ import io.flutter.embedding.engine.FlutterEngineCache;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.BasicMessageChannel;
 import io.flutter.plugin.common.JSONMessageCodec;
+import android.app.KeyguardManager;
 
 public class LockScreenOverlayActivity extends Activity {
     private FlutterView flutterView;
