@@ -80,24 +80,41 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private Point szWindow = new Point();
     private Timer mTrayAnimationTimer;
     private TrayAnimationTimerTask mTrayTimerTask;
+    private boolean screenOn = false;
+    private boolean userPresent = false;
+
     private BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-            if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                Log.d("OverlayService", "Usuário desbloqueou o dispositivo");
-                if (flutterEngine != null) {
-                    flutterEngine.getLifecycleChannel().appIsResumed();
-                }
+
+            if (Intent.ACTION_SCREEN_ON.equals(action)) {
+                screenOn = true;
+                updateFlutterLifecycle();
+                Log.d("OverlayService", "Tela ligada");
             } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                screenOn = false;
+                updateFlutterLifecycle();
                 Log.d("OverlayService", "Tela desligada");
-                if (flutterEngine != null) {
-                    flutterEngine.getLifecycleChannel().appIsPaused();
-                }
+            } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                userPresent = true;
+                updateFlutterLifecycle();
+                Log.d("OverlayService", "Usuário desbloqueou o dispositivo");
             }
         }
     };
+
+    private void updateFlutterLifecycle() {
+        if (flutterEngine == null) return;
+
+        if (screenOn && userPresent) {
+            // Tela ligada e desbloqueada: app ativo
+            flutterEngine.getLifecycleChannel().appIsResumed();
+        } else {
+            // Tela desligada ou bloqueada: app em pausa
+            flutterEngine.getLifecycleChannel().appIsPaused();
+        }
+    }
 
     @Nullable
     @Override
