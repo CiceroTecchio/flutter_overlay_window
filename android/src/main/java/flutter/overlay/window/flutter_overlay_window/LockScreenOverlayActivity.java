@@ -81,7 +81,18 @@ public class LockScreenOverlayActivity extends Activity {
         flutterEngine.getLifecycleChannel().appIsResumed();
 
         isRunning = true;
+        flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
         overlayMessageChannel = new BasicMessageChannel<>(flutterEngine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+
+        flutterChannel.setMethodCallHandler((call, result) -> {
+            if ("close".equals(call.method)) {
+                finish();
+                isRunning = false;
+                result.success(true);
+            } else {
+                result.notImplemented();
+            }
+        });
 
         overlayMessageChannel.setMessageHandler((message, reply) -> {
             WindowSetup.messenger.send(message);
@@ -116,6 +127,7 @@ public class LockScreenOverlayActivity extends Activity {
     }
 
     @Override
+    
     public void onDestroy() {
         super.onDestroy();
         unregisterReceiver(closeReceiver);
@@ -129,6 +141,11 @@ public class LockScreenOverlayActivity extends Activity {
         } catch (Exception e) {
             Log.d("LockScreenOverlay", "Falha ao parar som do ringtone");
             e.printStackTrace();
+        }
+        
+       if (flutterView != null) {
+            flutterView.detachFromFlutterEngine();
+            flutterView = null; // opcional
         }
         isRunning = false;
     }

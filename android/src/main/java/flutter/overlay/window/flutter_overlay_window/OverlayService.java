@@ -78,6 +78,23 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private Point szWindow = new Point();
     private Timer mTrayAnimationTimer;
     private TrayAnimationTimerTask mTrayTimerTask;
+    private BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                Log.d("OverlayService", "Usuário desbloqueou o dispositivo");
+                if (flutterEngine != null) {
+                    flutterEngine.getLifecycleChannel().appIsResumed();
+                }
+            } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                Log.d("OverlayService", "Tela desligada");
+                if (flutterEngine != null) {
+                    flutterEngine.getLifecycleChannel().appIsPaused();
+                }
+            }
+        }
+    };
 
     @Nullable
     @Override
@@ -128,6 +145,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
 
         super.onDestroy();
+        unregisterReceiver(screenReceiver);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
@@ -192,8 +210,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.e("OverlayService", "FlutterEngine não encontrado no cache");
             return;
         }
-        engine.getLifecycleChannel().appIsResumed();
-
         if (flutterChannel == null) {
             flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
             flutterChannel.setMethodCallHandler((call, result) -> {
@@ -234,6 +250,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 }
             }
 
+            engine.getLifecycleChannel().appIsResumed();
             flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
             flutterView.attachToFlutterEngine(engine);
             flutterView.setFitsSystemWindows(true);
@@ -451,6 +468,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public void onCreate() { // Get the cached FlutterEngine
         // Initialize resources early to prevent null pointer exceptions
         mResources = getApplicationContext().getResources();
+
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_USER_PRESENT);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
+        registerReceiver(screenReceiver, filter);
         
         FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
 
