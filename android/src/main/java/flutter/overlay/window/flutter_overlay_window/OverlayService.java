@@ -529,8 +529,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
             serviceChannel.setSound(null, null); 
             serviceChannel.enableVibration(false);
             NotificationManager manager = getSystemService(NotificationManager.class);
-            assert manager != null;
-            manager.createNotificationChannel(serviceChannel);
+            if (manager != null) {
+                manager.createNotificationChannel(serviceChannel);
+            }
         }
     }
 
