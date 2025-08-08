@@ -156,7 +156,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         mResources = getApplicationContext().getResources();
 
-        new Handler(Looper.getMainLooper()).post(() -> initOverlay(intent));
+        initOverlay(intent);
 
         return START_STICKY;
     }
@@ -168,24 +168,20 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         if (isCloseWindow) {
             if (windowManager != null) {
-                new Handler(Looper.getMainLooper()).post(() -> {
                     windowManager.removeView(flutterView);
                     flutterView.detachFromFlutterEngine();
                     windowManager = null;
                     stopSelf();
-                });
             }
             isRunning = false;
             return;
         }
 
         if (windowManager != null && flutterView != null) {
-            new Handler(Looper.getMainLooper()).post(() -> {
                 windowManager.removeView(flutterView);
                 flutterView.detachFromFlutterEngine();
                 windowManager = null;
                 stopSelf();
-            });
         }
 
         isRunning = true;
@@ -228,8 +224,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
         overlayMessageChannel.setMessageHandler((message, reply) -> WindowSetup.messenger.send(message));
 
-        // 🔹 3. Criar e adicionar o FlutterView no thread principal
-        new Handler(Looper.getMainLooper()).post(() -> {
             engine.getLifecycleChannel().appIsResumed();
 
             if (flutterView != null) {
@@ -295,7 +289,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
             windowManager.addView(flutterView, params);
             moveOverlayInternal(dx, dy, null);
-        });
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
