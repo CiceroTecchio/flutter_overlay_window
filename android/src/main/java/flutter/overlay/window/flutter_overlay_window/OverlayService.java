@@ -87,7 +87,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-
             if (Intent.ACTION_SCREEN_ON.equals(action)) {
                 screenOn = true;
                 updateFlutterLifecycle();
@@ -111,9 +110,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
         if (screenOn && userPresent) {
             // Tela ligada e desbloqueada: app ativo
             flutterEngine.getLifecycleChannel().appIsResumed();
-        } else {
-            // Tela desligada ou bloqueada: app em pausa
-            flutterEngine.getLifecycleChannel().appIsPaused();
         }
     }
 
