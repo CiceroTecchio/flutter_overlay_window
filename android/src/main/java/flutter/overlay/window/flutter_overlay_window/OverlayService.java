@@ -192,10 +192,12 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.e("OverlayService", "FlutterEngine não encontrado no cache");
             return;
         }
+        engine.getLifecycleChannel().appIsResumed();
 
         if (flutterChannel == null) {
             flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
-            flutterChannel.setMethodCallHandler((call, result) -> {
+        }
+        flutterChannel.setMethodCallHandler((call, result) -> {
                 switch (call.method) {
                     case "updateFlag":
                         String flag = call.argument("flag");
@@ -216,7 +218,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         result.notImplemented();
                 }
             });
-        }
 
         if (overlayMessageChannel == null) {
             overlayMessageChannel = new BasicMessageChannel<>(engine.getDartExecutor(),
@@ -224,7 +225,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
         overlayMessageChannel.setMessageHandler((message, reply) -> WindowSetup.messenger.send(message));
 
-            engine.getLifecycleChannel().appIsResumed();
 
             if (flutterView != null) {
                 flutterView.detachFromFlutterEngine();
