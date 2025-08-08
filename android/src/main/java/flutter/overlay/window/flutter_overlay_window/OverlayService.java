@@ -85,7 +85,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
-    @Override
     public void onDestroy() {
         Log.d("OverLay", "Destroying the overlay window service");
 
