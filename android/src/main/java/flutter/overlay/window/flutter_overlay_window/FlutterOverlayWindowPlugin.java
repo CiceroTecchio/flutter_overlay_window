@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat;
 import android.os.Handler;
 import android.content.BroadcastReceiver;
 import android.os.Looper;
+import android.content.IntentFilter;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -80,19 +81,18 @@ public class FlutterOverlayWindowPlugin implements
                 String action = intent.getAction();
                 if (Intent.ACTION_USER_PRESENT.equals(action)) {
                     Log.d("FlutterOverlayWindowPlugin", "Usuário desbloqueou a tela");
+
                     // Envia broadcast para fechar LockScreenOverlayActivity
                     Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
                     closeIntent.setPackage(context.getPackageName());
                     context.sendBroadcast(closeIntent);
 
-                    try {
-                        Intent intent = new Intent(context, OverlayService.class);
-                        intent.setAction("RESUME_OVERLAY");
-                        context.startService(intent);
-                    } catch (Exception e) {
-                        Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
-                        e.printStackTrace();
-                    }   
+                    // Envia intent para OverlayService para "resume" do FlutterView
+                    Intent resumeIntent = new Intent(context, OverlayService.class);
+                    resumeIntent.setAction("RESUME_OVERLAY");
+                    context.startService(resumeIntent);
+
+                    Log.d("FlutterOverlayWindowPlugin", "Enviado RESUME_OVERLAY para OverlayService");
                 }
             }
         };
