@@ -54,6 +54,7 @@ public class FlutterOverlayWindowPlugin implements
     private Result pendingResult;
     final int REQUEST_CODE_FOR_OVERLAY_PERMISSION = 1248;
     private BroadcastReceiver screenUnlockReceiver;
+    private boolean sentResumeForThisUnlock = false;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
@@ -80,19 +81,25 @@ public class FlutterOverlayWindowPlugin implements
             public void onReceive(Context context, Intent intent) {
                 String action = intent.getAction();
                 if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                    Log.d("FlutterOverlayWindowPlugin", "Usuário desbloqueou a tela");
+                    if (!sentResumeForThisUnlock) {
+                        Log.d("FlutterOverlayWindowPlugin", "Usuário desbloqueou a tela");
 
-                    // Envia broadcast para fechar LockScreenOverlayActivity
-                    Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
-                    closeIntent.setPackage(context.getPackageName());
-                    context.sendBroadcast(closeIntent);
+                        // Envia broadcast para fechar LockScreenOverlayActivity
+                        Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
+                        closeIntent.setPackage(context.getPackageName());
+                        context.sendBroadcast(closeIntent);
 
-                    // Envia intent para OverlayService para "resume" do FlutterView
-                    Intent resumeIntent = new Intent(context, OverlayService.class);
-                    resumeIntent.setAction("RESUME_OVERLAY");
-                    context.startService(resumeIntent);
+                        // Envia intent para OverlayService para "resume" do FlutterView
+                        Intent resumeIntent = new Intent(context, OverlayService.class);
+                        resumeIntent.setAction("RESUME_OVERLAY");
+                        context.startService(resumeIntent);
 
-                    Log.d("FlutterOverlayWindowPlugin", "Enviado RESUME_OVERLAY para OverlayService");
+                        Log.d("FlutterOverlayWindowPlugin", "Enviado RESUME_OVERLAY para OverlayService");
+                        sentResumeForThisUnlock = true;
+                    }
+                } else {
+                    // Se quiser, pode resetar a flag para futuros eventos
+                    sentResumeForThisUnlock = false;
                 }
             }
         };
