@@ -185,25 +185,26 @@ public class FlutterOverlayWindowPlugin implements
             result.success(OverlayService.isRunning);
             return;
         } else if (call.method.equals("moveOverlay")) {
-            if (OverlayService.isRunning) {
-                try {
-                    int x = call.argument("x");
-                    int y = call.argument("y");
-                    result.success(OverlayService.moveOverlay(x, y));
-                } catch (Exception e) {
-                    Log.e("OverlayPlugin", "Failed to move overlay: " + e.getMessage());
-                    e.printStackTrace();
-                    result.error("MOVE_ERROR", "Failed to move overlay", e.getMessage());
-                }
-            }
 
             if (LockScreenOverlayActivity.isRunning) {
                 // Envia broadcast para fechar a LockScreenOverlayActivity, caso esteja visível
                 Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
                 closeIntent.setPackage(context.getPackageName());
                 context.sendBroadcast(closeIntent);
-                result.success(true);
             }
+            if (OverlayService.isRunning) {
+                try {
+                    int x = call.argument("x");
+                    int y = call.argument("y");
+                    OverlayService.moveOverlay(x, y);
+                } catch (Exception e) {
+                    Log.e("OverlayPlugin", "Failed to move overlay: " + e.getMessage());
+                    e.printStackTrace();
+                    result.error("MOVE_ERROR", "Failed to move overlay", e.getMessage());
+                    return;
+                }
+            }
+            result.success(true);
         } else if (call.method.equals("getOverlayPosition")) {
             try {
                 result.success(OverlayService.getCurrentPosition());
