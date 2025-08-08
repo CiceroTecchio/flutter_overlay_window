@@ -192,7 +192,7 @@ public class FlutterOverlayWindowPlugin implements
                         intent.putExtra("overlayTitle", overlayTitle);
                         intent.putExtra("overlayContent", overlayContent);
                         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                            ContextCompat.startForegroundService(context, intent);
+                            context.startService(intent);
                         }, 500);
                     } catch (Exception e) {
                         Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
