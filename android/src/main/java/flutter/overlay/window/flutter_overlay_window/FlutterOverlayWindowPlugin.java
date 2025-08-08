@@ -14,6 +14,7 @@ import android.os.PowerManager;
 import android.app.KeyguardManager;
 import androidx.core.content.ContextCompat;
 import android.os.Handler;
+import android.content.BroadcastReceiver;
 import android.os.Looper;
 
 import androidx.annotation.NonNull;
