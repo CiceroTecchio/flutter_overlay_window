@@ -53,16 +53,11 @@ public class FlutterOverlayWindowPlugin implements
     private BasicMessageChannel<Object> messenger;
     private Result pendingResult;
     final int REQUEST_CODE_FOR_OVERLAY_PERMISSION = 1248;
-    private BroadcastReceiver screenUnlockReceiver;
-    private final Object lock = new Object();
-    private boolean sentResumeForThisUnlock = false;
-    private Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
         this.context = flutterPluginBinding.getApplicationContext();
-        registerScreenUnlockReceiver();
-        Log.d("FlutterOverlayWindowPlugin", "Registrando screenUnlockReceiver");
+        
         channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), OverlayConstants.CHANNEL_TAG);
         channel.setMethodCallHandler(this);
 
@@ -74,46 +69,6 @@ public class FlutterOverlayWindowPlugin implements
         if (WindowSetup.messenger != null) {
             WindowSetup.messenger.setMessageHandler(this);
         }
-    }
-
-    private void registerScreenUnlockReceiver() {
-        Log.d("FlutterOverlayWindowPlugin", "Registrando screenUnlockReceiver");
-
-        screenUnlockReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                String action = intent.getAction();
-                if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                    synchronized (lock) {
-                        if (!sentResumeForThisUnlock) {
-                            Log.d("FlutterOverlayWindowPlugin", "Usuário desbloqueou a tela");
-
-                            // Envia broadcast para fechar LockScreenOverlayActivity
-                            Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
-                            closeIntent.setPackage(context.getPackageName());
-                            context.sendBroadcast(closeIntent);
-
-                            // Envia intent para OverlayService para "resume" do FlutterView
-                            Intent resumeIntent = new Intent(context, OverlayService.class);
-                            resumeIntent.setAction("RESUME_OVERLAY");
-                            context.startService(resumeIntent);
-
-                            Log.d("FlutterOverlayWindowPlugin", "Enviado RESUME_OVERLAY para OverlayService");
-                            sentResumeForThisUnlock = true;
-
-                            // Reseta a flag após 3 segundos para permitir novo resume no futuro
-                            handler.postDelayed(() -> {
-                                synchronized (lock) {
-                                    sentResumeForThisUnlock = false;
-                                }
-                            }, 3000);
-                        }
-                    }
-                }
-            }
-        };
-        IntentFilter filter = new IntentFilter(Intent.ACTION_USER_PRESENT);
-        context.registerReceiver(screenUnlockReceiver, filter);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -302,11 +257,6 @@ public class FlutterOverlayWindowPlugin implements
         }
         if (WindowSetup.messenger != null) {
             WindowSetup.messenger.setMessageHandler(null);
-        }
-        if (screenUnlockReceiver != null) {
-            context.unregisterReceiver(screenUnlockReceiver);
-            screenUnlockReceiver = null;
-            Log.d("FlutterOverlayWindowPlugin", "Desregistrando screenUnlockReceiver");
         }
     }
 
