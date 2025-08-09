@@ -82,6 +82,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private TrayAnimationTimerTask mTrayTimerTask;
     private boolean userPresent = false;
 
+
+    private BroadcastReceiver screenUnlockReceiver;
+    private boolean isReceiverRegistered = false;
+    private final Object lock = new Object();
+    private Handler handler = new Handler(Looper.getMainLooper());
+    private boolean sentResumeForThisUnlock = false;
+
     private BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -93,6 +100,52 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
         }
     };
+
+    private void registerScreenUnlockReceiver() {
+        if (isReceiverRegistered) return;
+
+        screenUnlockReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (Intent.ACTION_USER_PRESENT.equals(intent.getAction())) {
+                    synchronized (lock) {
+                        if (!sentResumeForThisUnlock) {
+                            Log.d("OverlayService", "Usuário desbloqueou a tela");
+
+                            // Fecha LockScreenOverlayActivity (se estiver aberta)
+                            Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
+                            closeIntent.setPackage(context.getPackageName());
+                            context.sendBroadcast(closeIntent);
+
+                            FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+                            if (flutterView != null && flutterEngine != null) {
+                                flutterView.attachToFlutterEngine(flutterEngine);
+                                flutterEngine.getLifecycleChannel().appIsResumed();
+                                flutterView.invalidate();
+                                flutterView.requestLayout();
+                                bringOverlayToFront();
+                                Log.d("OverlayService", "FlutterView resumido e redraw feito.");
+                            } else {
+                                Log.w("OverlayService", "flutterView ou flutterEngine nulos ao tentar resumir.");
+                            }
+
+                            sentResumeForThisUnlock = true;
+
+                            handler.postDelayed(() -> {
+                                synchronized (lock) {
+                                    sentResumeForThisUnlock = false;
+                                }
+                            }, 3000);
+                        }
+                    }
+                }
+            }
+        };
+
+        IntentFilter filter = new IntentFilter(Intent.ACTION_USER_PRESENT);
+        registerReceiver(screenUnlockReceiver, filter);
+        isReceiverRegistered = true;
+    }
 
     @Nullable
     @Override
@@ -143,6 +196,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
 
         super.onDestroy();
+        if (isReceiverRegistered) {
+            unregisterReceiver(screenUnlockReceiver);
+            isReceiverRegistered = false;
+        }
         unregisterReceiver(screenReceiver);
     }
 
@@ -168,19 +225,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
             moveOverlayInternal(dx, dy, null);
             bringOverlayToFront();
             Log.d("OverlayService", "Overlay já ativo, trazido para frente.");
-            return START_STICKY;
-        } else if ("RESUME_OVERLAY".equals(action)) {
-            FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-            if (flutterView != null && flutterEngine != null) {
-                flutterView.attachToFlutterEngine(flutterEngine);
-                flutterEngine.getLifecycleChannel().appIsResumed();
-                flutterView.invalidate();
-                flutterView.requestLayout();
-                bringOverlayToFront();
-                Log.d("OverlayService", "FlutterView resumido e redraw feito.");
-            } else {
-                Log.w("OverlayService", "flutterView ou flutterEngine nulos ao tentar resumir.");
-            }
             return START_STICKY;
         }
 
@@ -485,6 +529,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         filter.addAction(Intent.ACTION_USER_PRESENT);
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         registerReceiver(screenReceiver, filter);
+        registerScreenUnlockReceiver();
         
         FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
 
