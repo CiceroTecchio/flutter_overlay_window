@@ -312,6 +312,7 @@ public class FlutterOverlayWindowPlugin implements
             context.unregisterReceiver(screenUnlockReceiver);
             screenUnlockReceiver = null;
             isScreenUnlockReceiverRegistered = false;
+            Log.d("FlutterOverlayWindowPlugin", "Desregistrando screenUnlockReceiver");
         }
     }
 
