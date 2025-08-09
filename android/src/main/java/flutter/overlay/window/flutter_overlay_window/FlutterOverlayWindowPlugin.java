@@ -74,9 +74,14 @@ public class FlutterOverlayWindowPlugin implements
             WindowSetup.messenger.setMessageHandler(this);
         }
     }
+    private boolean isScreenUnlockReceiverRegistered = false;
 
     private void registerScreenUnlockReceiver() {
-        if (screenUnlockReceiver != null) return;
+        if (isScreenUnlockReceiverRegistered) {
+            Log.d("FlutterOverlayWindowPlugin", "Receiver já registrado, não registra novamente");
+            return;
+        }
+        Log.d("FlutterOverlayWindowPlugin", "Registrando screenUnlockReceiver");
 
         screenUnlockReceiver = new BroadcastReceiver() {
             @Override
@@ -111,9 +116,9 @@ public class FlutterOverlayWindowPlugin implements
                 }
             }
         };
-
-        IntentFilter filter = new IntentFilter(Intent.ACTION_USER_PRESENT);
-        context.registerReceiver(screenUnlockReceiver, filter);
+    IntentFilter filter = new IntentFilter(Intent.ACTION_USER_PRESENT);
+    context.registerReceiver(screenUnlockReceiver, filter);
+    isScreenUnlockReceiverRegistered = true;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -303,12 +308,10 @@ public class FlutterOverlayWindowPlugin implements
         if (WindowSetup.messenger != null) {
             WindowSetup.messenger.setMessageHandler(null);
         }
-        if (screenUnlockReceiver != null) {
-            try {
-                context.unregisterReceiver(screenUnlockReceiver);
-            } catch (IllegalArgumentException e) {
-            }
+        if (screenUnlockReceiver != null && isScreenUnlockReceiverRegistered) {
+            context.unregisterReceiver(screenUnlockReceiver);
             screenUnlockReceiver = null;
+            isScreenUnlockReceiverRegistered = false;
         }
     }
 
