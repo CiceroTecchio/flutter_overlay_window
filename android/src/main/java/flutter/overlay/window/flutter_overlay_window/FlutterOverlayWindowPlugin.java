@@ -53,7 +53,6 @@ public class FlutterOverlayWindowPlugin implements
     private BasicMessageChannel<Object> messenger;
     private Result pendingResult;
     final int REQUEST_CODE_FOR_OVERLAY_PERMISSION = 1248;
-    private BroadcastReceiver screenUnlockReceiver;
     private final Object lock = new Object();
     private boolean sentResumeForThisUnlock = false;
     private Handler handler = new Handler(Looper.getMainLooper());
