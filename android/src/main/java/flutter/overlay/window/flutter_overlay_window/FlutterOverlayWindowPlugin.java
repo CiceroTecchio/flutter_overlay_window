@@ -61,11 +61,8 @@ public class FlutterOverlayWindowPlugin implements
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
         this.context = flutterPluginBinding.getApplicationContext();
-        if (!isReceiverRegistered) {
-            registerScreenUnlockReceiver();
-            isReceiverRegistered = true;
-            Log.d("FlutterOverlayWindowPlugin", "Registrando screenUnlockReceiver");
-        }
+        registerScreenUnlockReceiver();
+        Log.d("FlutterOverlayWindowPlugin", "Registrando screenUnlockReceiver");
         channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), OverlayConstants.CHANNEL_TAG);
         channel.setMethodCallHandler(this);
 
@@ -79,14 +76,7 @@ public class FlutterOverlayWindowPlugin implements
         }
     }
 
-    private static BroadcastReceiver screenUnlockReceiver = null;
-    private static boolean isReceiverRegistered = false;
-
     private void registerScreenUnlockReceiver() {
-        if (isReceiverRegistered) {
-            Log.d("FlutterOverlayWindowPlugin", "Receiver já registrado, não registra novamente");
-            return;
-        }
         Log.d("FlutterOverlayWindowPlugin", "Registrando screenUnlockReceiver");
 
         screenUnlockReceiver = new BroadcastReceiver() {
@@ -124,7 +114,6 @@ public class FlutterOverlayWindowPlugin implements
         };
         IntentFilter filter = new IntentFilter(Intent.ACTION_USER_PRESENT);
         context.registerReceiver(screenUnlockReceiver, filter);
-        isScreenUnlockReceiverRegistered = true;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
