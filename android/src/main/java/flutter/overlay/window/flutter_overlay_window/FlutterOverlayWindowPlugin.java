@@ -54,8 +54,9 @@ public class FlutterOverlayWindowPlugin implements
     private Result pendingResult;
     final int REQUEST_CODE_FOR_OVERLAY_PERMISSION = 1248;
     private BroadcastReceiver screenUnlockReceiver;
-    private long lastResumeSentTime = 0;
-    private static final long RESUME_DEBOUNCE_MS = 1000;
+    private final Object lock = new Object();
+    private boolean sentResumeForThisUnlock = false;
+    private Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
@@ -75,42 +76,43 @@ public class FlutterOverlayWindowPlugin implements
     }
 
     private void registerScreenUnlockReceiver() {
-        if (screenUnlockReceiver != null) return; // já registrado
+        if (screenUnlockReceiver != null) return;
 
         screenUnlockReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 String action = intent.getAction();
-                long now = System.currentTimeMillis();
-
                 if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                    if (now - lastResumeSentTime > RESUME_DEBOUNCE_MS) {
-                        Log.d("FlutterOverlayWindowPlugin", "Usuário desbloqueou a tela");
+                    synchronized (lock) {
+                        if (!sentResumeForThisUnlock) {
+                            Log.d("FlutterOverlayWindowPlugin", "Usuário desbloqueou a tela");
 
-                        // Envia broadcast para fechar LockScreenOverlayActivity
-                        Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
-                        closeIntent.setPackage(context.getPackageName());
-                        context.sendBroadcast(closeIntent);
+                            // Envia broadcast para fechar LockScreenOverlayActivity
+                            Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
+                            closeIntent.setPackage(context.getPackageName());
+                            context.sendBroadcast(closeIntent);
 
-                        // Envia intent para OverlayService para "resume" do FlutterView
-                        Intent resumeIntent = new Intent(context, OverlayService.class);
-                        resumeIntent.setAction("RESUME_OVERLAY");
-                        context.startService(resumeIntent);
+                            // Envia intent para OverlayService para "resume" do FlutterView
+                            Intent resumeIntent = new Intent(context, OverlayService.class);
+                            resumeIntent.setAction("RESUME_OVERLAY");
+                            context.startService(resumeIntent);
 
-                        Log.d("FlutterOverlayWindowPlugin", "Enviado RESUME_OVERLAY para OverlayService");
-                        lastResumeSentTime = now;
-                    } else {
-                        Log.d("FlutterOverlayWindowPlugin", "Ignorando múltiplo RESUME_OVERLAY rápido");
+                            Log.d("FlutterOverlayWindowPlugin", "Enviado RESUME_OVERLAY para OverlayService");
+                            sentResumeForThisUnlock = true;
+
+                            // Reseta a flag após 3 segundos para permitir novo resume no futuro
+                            handler.postDelayed(() -> {
+                                synchronized (lock) {
+                                    sentResumeForThisUnlock = false;
+                                }
+                            }, 3000);
+                        }
                     }
-                } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
-                    Log.d("FlutterOverlayWindowPlugin", "Tela desligada, resetando controle de tempo");
-                    lastResumeSentTime = 0;
                 }
             }
         };
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(Intent.ACTION_USER_PRESENT);
-        filter.addAction(Intent.ACTION_SCREEN_OFF);
+
+        IntentFilter filter = new IntentFilter(Intent.ACTION_USER_PRESENT);
         context.registerReceiver(screenUnlockReceiver, filter);
     }
 
