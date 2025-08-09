@@ -175,6 +175,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.attachToFlutterEngine(flutterEngine);
                 flutterView.invalidate();
                 flutterEngine.getLifecycleChannel().appIsResumed();
+                 Intent launchIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                    startActivity(launchIntent);
+                    Log.d("OverlayService", "App aberto via launcher intent.");
+                } else {
+                    Log.w("OverlayService", "Não encontrou launch intent para o app.");
+                }
                 Log.d("OverlayService", "FlutterView resumido e redraw feito.");
             } else {
                 Log.w("OverlayService", "flutterView ou flutterEngine nulos ao tentar resumir.");
