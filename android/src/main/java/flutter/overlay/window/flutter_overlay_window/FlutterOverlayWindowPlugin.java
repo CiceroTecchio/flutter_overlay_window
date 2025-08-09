@@ -61,7 +61,11 @@ public class FlutterOverlayWindowPlugin implements
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
         this.context = flutterPluginBinding.getApplicationContext();
-        registerScreenUnlockReceiver();
+        if (!isReceiverRegistered) {
+            registerScreenUnlockReceiver();
+            isReceiverRegistered = true;
+            Log.d("FlutterOverlayWindowPlugin", "Registrando screenUnlockReceiver");
+        }
         channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), OverlayConstants.CHANNEL_TAG);
         channel.setMethodCallHandler(this);
 
@@ -74,10 +78,12 @@ public class FlutterOverlayWindowPlugin implements
             WindowSetup.messenger.setMessageHandler(this);
         }
     }
-    private boolean isScreenUnlockReceiverRegistered = false;
+
+    private static BroadcastReceiver screenUnlockReceiver = null;
+    private static boolean isReceiverRegistered = false;
 
     private void registerScreenUnlockReceiver() {
-        if (isScreenUnlockReceiverRegistered) {
+        if (isReceiverRegistered) {
             Log.d("FlutterOverlayWindowPlugin", "Receiver já registrado, não registra novamente");
             return;
         }
@@ -116,9 +122,9 @@ public class FlutterOverlayWindowPlugin implements
                 }
             }
         };
-    IntentFilter filter = new IntentFilter(Intent.ACTION_USER_PRESENT);
-    context.registerReceiver(screenUnlockReceiver, filter);
-    isScreenUnlockReceiverRegistered = true;
+        IntentFilter filter = new IntentFilter(Intent.ACTION_USER_PRESENT);
+        context.registerReceiver(screenUnlockReceiver, filter);
+        isScreenUnlockReceiverRegistered = true;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -308,10 +314,10 @@ public class FlutterOverlayWindowPlugin implements
         if (WindowSetup.messenger != null) {
             WindowSetup.messenger.setMessageHandler(null);
         }
-        if (screenUnlockReceiver != null && isScreenUnlockReceiverRegistered) {
+        if (screenUnlockReceiver != null && isReceiverRegistered) {
             context.unregisterReceiver(screenUnlockReceiver);
             screenUnlockReceiver = null;
-            isScreenUnlockReceiverRegistered = false;
+            isReceiverRegistered = false;
             Log.d("FlutterOverlayWindowPlugin", "Desregistrando screenUnlockReceiver");
         }
     }
