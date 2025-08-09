@@ -53,7 +53,7 @@ public class LockScreenOverlayActivity extends Activity {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true);
+            // setShowWhenLocked(true);
             setTurnScreenOn(true);
             setFinishOnTouchOutside(false);
         }
@@ -66,7 +66,7 @@ public class LockScreenOverlayActivity extends Activity {
             WindowManager.LayoutParams.FLAG_FULLSCREEN
         );
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O_MR1) {
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+            // getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
         }
         
         resources = getResources();
