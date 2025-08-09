@@ -303,10 +303,9 @@ public class FlutterOverlayWindowPlugin implements
         if (WindowSetup.messenger != null) {
             WindowSetup.messenger.setMessageHandler(null);
         }
-        if (screenUnlockReceiver != null && isReceiverRegistered) {
+        if (screenUnlockReceiver != null) {
             context.unregisterReceiver(screenUnlockReceiver);
             screenUnlockReceiver = null;
-            isReceiverRegistered = false;
             Log.d("FlutterOverlayWindowPlugin", "Desregistrando screenUnlockReceiver");
         }
     }
