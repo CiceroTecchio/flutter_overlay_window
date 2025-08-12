@@ -392,16 +392,31 @@ public class FlutterOverlayWindowPlugin implements
     private void openLockScreenPermissionSettings() {
         try {
             Intent intent = new Intent("miui.intent.action.APP_PERM_EDITOR");
-            intent.setClassName("com.miui.securitycenter",
-                    "com.miui.permcenter.permissions.PermissionsEditorActivity");
+            intent.setClassName(
+                    "com.miui.securitycenter",
+                    "com.miui.permcenter.permissions.AppPermissionsEditorActivity"
+            );
             intent.putExtra("extra_pkgname", context.getPackageName());
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(intent);
-        } catch (Exception ex) {
-            Intent settingsIntent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-            settingsIntent.setData(Uri.fromParts("package", context.getPackageName(), null));
-            settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(settingsIntent);
+        } catch (Exception e1) {
+            try {
+                // Fallback para MIUI mais antigos
+                Intent intent = new Intent("miui.intent.action.APP_PERM_EDITOR");
+                intent.setClassName(
+                        "com.miui.securitycenter",
+                        "com.miui.permcenter.permissions.PermissionsEditorActivity"
+                );
+                intent.putExtra("extra_pkgname", context.getPackageName());
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+            } catch (Exception e2) {
+                // Fallback Android padrão
+                Intent settingsIntent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                settingsIntent.setData(Uri.fromParts("package", context.getPackageName(), null));
+                settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(settingsIntent);
+            }
         }
     }
 }
