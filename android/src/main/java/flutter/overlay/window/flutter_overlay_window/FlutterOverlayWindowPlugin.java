@@ -360,23 +360,34 @@ public class FlutterOverlayWindowPlugin implements
         }
     }
 
-    private boolean isLockScreenPermissionGranted() {
+    private boolean isLockScreenPermissionGranted(Context context) {
         try {
             AppOpsManager appOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
-            Method checkOpNoThrow = AppOpsManager.class.getMethod("checkOpNoThrow", int.class, int.class, String.class);
+
+            // Pega o método hidden via reflection
+            Method checkOpNoThrow = AppOpsManager.class.getDeclaredMethod(
+                    "checkOpNoThrow", int.class, int.class, String.class
+            );
+            checkOpNoThrow.setAccessible(true);
 
             // ID interno usado pelo MIUI para "SHOW_WHEN_LOCKED"
-            // Esse valor pode mudar em versões futuras, mas normalmente é o 10020 ou próximo
+            // Em versões diferentes do MIUI pode mudar, mas 10020 é o padrão
             int OP_SHOW_WHEN_LOCKED = 10020;
 
-            int mode = (int) checkOpNoThrow.invoke(appOps, OP_SHOW_WHEN_LOCKED,
-                    Binder.getCallingUid(), context.getPackageName());
+            int mode = (int) checkOpNoThrow.invoke(
+                    appOps,
+                    OP_SHOW_WHEN_LOCKED,
+                    Binder.getCallingUid(),
+                    context.getPackageName()
+            );
 
             return mode == AppOpsManager.MODE_ALLOWED;
         } catch (Exception e) {
+            // Se não conseguir verificar, assume como permitido
             return true;
         }
     }
+
 
     private void openLockScreenPermissionSettings() {
         try {
