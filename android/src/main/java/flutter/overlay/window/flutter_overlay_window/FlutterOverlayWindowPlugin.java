@@ -361,7 +361,7 @@ public class FlutterOverlayWindowPlugin implements
         }
     }
 
-    private boolean isLockScreenPermissionGranted(Context context) {
+    private boolean isLockScreenPermissionGranted() {
         try {
             AppOpsManager appOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
 
