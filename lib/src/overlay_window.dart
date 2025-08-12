@@ -175,4 +175,17 @@ class FlutterOverlayWindow {
   static void disposeOverlayListener() {
     _controller.close();
   }
+
+  /// Check if the lock screen permission is granted
+  static Future<bool> isLockScreenPermissionGranted() async {
+    final bool? _res = await _channel.invokeMethod<bool?>(
+      'isLockScreenPermissionGranted',
+    );
+    return _res ?? true;
+  }
+
+  /// Open the lock screen permission settings page
+  static Future<void> openLockScreenPermissionSettings() async {
+    await _channel.invokeMethod<void>('openLockScreenPermissionSettings');
+  }
 }
