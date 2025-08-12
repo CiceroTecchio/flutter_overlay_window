@@ -75,6 +75,10 @@ public class FlutterOverlayWindowPlugin implements
     public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
         if (call.method.equals("checkPermission")) {
             result.success(checkOverlayPermission());
+        } else if (call.method.equals("isLockScreenPermissionGranted")) {
+            result.success(isLockScreenPermissionGranted());
+        } else if (call.method.equals("openLockScreenPermissionSettings")) {
+            openLockScreenPermissionSettings();
         } else if (call.method.equals("requestPermission")) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 pendingResult = result;
@@ -354,7 +358,7 @@ public class FlutterOverlayWindowPlugin implements
         }
     }
 
-    public static boolean isLockScreenPermissionGranted() {
+    private boolean isLockScreenPermissionGranted() {
         try {
             AppOpsManager appOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
             Method checkOpNoThrow = AppOpsManager.class.getMethod("checkOpNoThrow", int.class, int.class, String.class);
@@ -372,7 +376,7 @@ public class FlutterOverlayWindowPlugin implements
         }
     }
 
-    public static void openLockScreenPermissionSettings() {
+    private void openLockScreenPermissionSettings() {
         try {
             Intent intent = new Intent("miui.intent.action.APP_PERM_EDITOR");
             intent.setClassName("com.miui.securitycenter",
