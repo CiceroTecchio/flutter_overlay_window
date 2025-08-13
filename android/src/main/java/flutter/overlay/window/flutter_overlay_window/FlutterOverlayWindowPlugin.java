@@ -82,6 +82,7 @@ public class FlutterOverlayWindowPlugin implements
             result.success(isLockScreenPermissionGranted());
         } else if (call.method.equals("openLockScreenPermissionSettings")) {
             openLockScreenPermissionSettings();
+            result.success(null);
         } else if (call.method.equals("requestPermission")) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 pendingResult = result;
