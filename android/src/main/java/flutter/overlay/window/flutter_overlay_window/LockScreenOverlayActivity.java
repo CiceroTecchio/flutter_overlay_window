@@ -78,7 +78,33 @@ public class LockScreenOverlayActivity extends Activity {
             isRunning = false;
             return;
         }
-        flutterEngine.getLifecycleChannel().appIsResumed();
+
+        // Validate engine state before proceeding
+        try {
+            if (!flutterEngine.getRenderer().isRenderingToSurface()) {
+                Log.w("LockScreenOverlay", "FlutterEngine not ready for rendering, waiting...");
+                // Wait a bit for the engine to be ready
+                new Handler(getMainLooper()).postDelayed(() -> {
+                    if (!isFinishing() && isRunning) {
+                        // Retry initialization
+                        recreate();
+                    }
+                }, 200);
+                return;
+            }
+        } catch (Exception e) {
+            Log.e("LockScreenOverlay", "Error checking engine state: " + e.getMessage());
+            finish();
+            return;
+        }
+
+        try {
+            flutterEngine.getLifecycleChannel().appIsResumed();
+        } catch (Exception e) {
+            Log.e("LockScreenOverlay", "Error resuming engine: " + e.getMessage());
+            finish();
+            return;
+        }
 
         isRunning = true;
         flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
@@ -95,7 +121,11 @@ public class LockScreenOverlayActivity extends Activity {
         });
 
         overlayMessageChannel.setMessageHandler((message, reply) -> {
-            WindowSetup.messenger.send(message);
+            try {
+                WindowSetup.messenger.send(message);
+            } catch (Exception e) {
+                Log.e("LockScreenOverlay", "Error sending message: " + e.getMessage());
+            }
         });
 
         Intent intent = getIntent();
@@ -107,22 +137,35 @@ public class LockScreenOverlayActivity extends Activity {
         final int pxHeight = (height == -1999 || height == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(height);
 
         new Handler(getMainLooper()).post(() -> {
-            flutterView = new FlutterView(this, new FlutterTextureView(this));
-            flutterView.attachToFlutterEngine(flutterEngine);
-            flutterView.setBackgroundColor(Color.TRANSPARENT);
-            flutterView.setFocusable(true);
-            flutterView.setFocusableInTouchMode(true);
+            try {
+                // Validate engine state again before creating view
+                if (flutterEngine == null || !flutterEngine.getRenderer().isRenderingToSurface()) {
+                    Log.e("LockScreenOverlay", "Engine not ready for view creation");
+                    finish();
+                    return;
+                }
 
-            FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(pxWidth, pxHeight);
-            layoutParams.gravity = Gravity.CENTER;
+                flutterView = new FlutterView(this, new FlutterTextureView(this));
+                flutterView.attachToFlutterEngine(flutterEngine);
+                flutterView.setBackgroundColor(Color.TRANSPARENT);
+                flutterView.setFocusable(true);
+                flutterView.setFocusableInTouchMode(true);
 
-            FrameLayout root = new FrameLayout(this);
-            root.setLayoutParams(new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
-            root.addView(flutterView, layoutParams);
+                FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(pxWidth, pxHeight);
+                layoutParams.gravity = Gravity.CENTER;
 
-            setContentView(root);
+                FrameLayout root = new FrameLayout(this);
+                root.setLayoutParams(new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT));
+                root.addView(flutterView, layoutParams);
+
+                setContentView(root);
+            } catch (Exception e) {
+                Log.e("LockScreenOverlay", "Error creating FlutterView: " + e.getMessage());
+                e.printStackTrace();
+                finish();
+            }
         });
     }
 

@@ -101,6 +101,51 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     };
 
+    private BroadcastReceiver configurationChangeReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_CONFIGURATION_CHANGED.equals(intent.getAction())) {
+                Log.d("OverlayService", "Configuration change detected, updating overlay");
+                // Delay the update to let the system settle
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (isRunning && windowManager != null && flutterView != null) {
+                        try {
+                            // Update window metrics for new configuration
+                            updateWindowMetrics();
+                            // Force a layout update
+                            flutterView.requestLayout();
+                        } catch (Exception e) {
+                            Log.e("OverlayService", "Error handling configuration change: " + e.getMessage());
+                        }
+                    }
+                }, 500);
+            }
+        }
+    };
+
+    private void updateWindowMetrics() {
+        if (windowManager == null) return;
+        
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                WindowMetrics metrics = windowManager.getCurrentWindowMetrics();
+                Insets insets = metrics.getWindowInsets()
+                        .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars());
+                int w = metrics.getBounds().width() - insets.left - insets.right;
+                int h = metrics.getBounds().height() - insets.top - insets.bottom;
+                szWindow.set(w, h);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                windowManager.getDefaultDisplay().getSize(szWindow);
+            } else {
+                DisplayMetrics displaymetrics = new DisplayMetrics();
+                windowManager.getDefaultDisplay().getMetrics(displaymetrics);
+                szWindow.set(displaymetrics.widthPixels, displaymetrics.heightPixels);
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error updating window metrics: " + e.getMessage());
+        }
+    }
+
     private void registerScreenUnlockReceiver() {
         if (isReceiverRegistered) return;
 
@@ -196,11 +241,32 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
 
         super.onDestroy();
-        if (isReceiverRegistered) {
-            unregisterReceiver(screenUnlockReceiver);
-            isReceiverRegistered = false;
+        
+        // Unregister receivers safely
+        try {
+            if (isReceiverRegistered && screenUnlockReceiver != null) {
+                unregisterReceiver(screenUnlockReceiver);
+                isReceiverRegistered = false;
+            }
+        } catch (Exception e) {
+            Log.e("OverLay", "Error unregistering screenUnlockReceiver", e);
         }
-        unregisterReceiver(screenReceiver);
+        
+        try {
+            if (screenReceiver != null) {
+                unregisterReceiver(screenReceiver);
+            }
+        } catch (Exception e) {
+            Log.e("OverLay", "Error unregistering screenReceiver", e);
+        }
+        
+        try {
+            if (configurationChangeReceiver != null) {
+                unregisterReceiver(configurationChangeReceiver);
+            }
+        } catch (Exception e) {
+            Log.e("OverLay", "Error unregistering configurationChangeReceiver", e);
+        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
@@ -291,13 +357,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
             });
         }
 
-        if (overlayMessageChannel == null) {
+                if (overlayMessageChannel == null) {
             overlayMessageChannel = new BasicMessageChannel<>(engine.getDartExecutor(),
                     OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
         }
         overlayMessageChannel.setMessageHandler((message, reply) -> WindowSetup.messenger.send(message));
 
-
+        try {
             if (flutterView != null) {
                 flutterView.detachFromFlutterEngine();
                 if (windowManager != null) {
@@ -306,30 +372,65 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 }
             }
 
+            // Validate engine state before creating view
+            if (!engine.getRenderer().isRenderingToSurface()) {
+                Log.w("OverlayService", "Engine not ready, waiting...");
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (isRunning) {
+                        initOverlay(intent);
+                    }
+                }, 100);
+                return;
+            }
+
             engine.getLifecycleChannel().appIsResumed();
-            flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
-            flutterView.attachToFlutterEngine(engine);
-            flutterView.setFitsSystemWindows(true);
-            flutterView.setFocusable(true);
-            flutterView.setFocusableInTouchMode(true);
-            flutterView.setBackgroundColor(Color.TRANSPARENT);
-            flutterView.setOnTouchListener(this);
+            
+            // Create FlutterView with proper error handling
+            try {
+                flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
+                flutterView.attachToFlutterEngine(engine);
+                flutterView.setFitsSystemWindows(true);
+                flutterView.setFocusable(true);
+                flutterView.setFocusableInTouchMode(true);
+                flutterView.setBackgroundColor(Color.TRANSPARENT);
+                flutterView.setOnTouchListener(this);
+            } catch (Exception e) {
+                Log.e("OverlayService", "Failed to create FlutterView: " + e.getMessage());
+                e.printStackTrace();
+                isRunning = false;
+                stopSelf();
+                return;
+            }
 
             // Define tamanho da tela
             windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                WindowMetrics metrics = windowManager.getCurrentWindowMetrics();
-                Insets insets = metrics.getWindowInsets()
-                        .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars());
-                int w = metrics.getBounds().width() - insets.left - insets.right;
-                int h = metrics.getBounds().height() - insets.top - insets.bottom;
-                szWindow.set(w, h);
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-                windowManager.getDefaultDisplay().getSize(szWindow);
-            } else {
-                DisplayMetrics displaymetrics = new DisplayMetrics();
-                windowManager.getDefaultDisplay().getMetrics(displaymetrics);
-                szWindow.set(displaymetrics.widthPixels, displaymetrics.heightPixels);
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    WindowMetrics metrics = windowManager.getCurrentWindowMetrics();
+                    Insets insets = metrics.getWindowInsets()
+                            .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars());
+                    int w = metrics.getBounds().width() - insets.left - insets.right;
+                    int h = metrics.getBounds().height() - insets.top - insets.bottom;
+                    szWindow.set(w, h);
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                    windowManager.getDefaultDisplay().getSize(szWindow);
+                } else {
+                    DisplayMetrics displaymetrics = new DisplayMetrics();
+                    windowManager.getDefaultDisplay().getMetrics(displaymetrics);
+                    szWindow.set(displaymetrics.widthPixels, displaymetrics.heightPixels);
+                }
+            } catch (Exception e) {
+                Log.e("OverlayService", "Error getting window metrics in initOverlay: " + e.getMessage());
+                // Fallback to default display
+                try {
+                    DisplayMetrics displaymetrics = new DisplayMetrics();
+                    windowManager.getDefaultDisplay().getMetrics(displaymetrics);
+                    szWindow.set(displaymetrics.widthPixels, displaymetrics.heightPixels);
+                } catch (Exception ex) {
+                    Log.e("OverlayService", "Critical error getting display metrics: " + ex.getMessage());
+                    // Set default values if all else fails
+                    szWindow.set(1080, 1920);
+                }
             }
 
             int width = intent.getIntExtra("width", WindowSetup.width);
@@ -360,8 +461,38 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
             params.gravity = WindowSetup.gravity;
 
-            windowManager.addView(flutterView, params);
-            moveOverlayInternal(dx, dy, null);
+            // Add view with proper error handling
+            try {
+                windowManager.addView(flutterView, params);
+                moveOverlayInternal(dx, dy, null);
+            } catch (Exception e) {
+                Log.e("OverlayService", "Failed to add overlay view: " + e.getMessage());
+                e.printStackTrace();
+                // Clean up on failure
+                if (flutterView != null) {
+                    flutterView.detachFromFlutterEngine();
+                    flutterView = null;
+                }
+                windowManager = null;
+                isRunning = false;
+                stopSelf();
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "Critical error in initOverlay: " + e.getMessage());
+            e.printStackTrace();
+            // Clean up on critical failure
+            if (flutterView != null) {
+                try {
+                    flutterView.detachFromFlutterEngine();
+                } catch (Exception ex) {
+                    Log.e("OverlayService", "Error detaching flutter view: " + ex.getMessage());
+                }
+                flutterView = null;
+            }
+            windowManager = null;
+            isRunning = false;
+            stopSelf();
+        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
@@ -530,6 +661,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         registerReceiver(screenReceiver, filter);
         registerScreenUnlockReceiver();
+        
+        // Register configuration change receiver
+        IntentFilter configFilter = new IntentFilter(Intent.ACTION_CONFIGURATION_CHANGED);
+        registerReceiver(configurationChangeReceiver, configFilter);
         
         FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
 
