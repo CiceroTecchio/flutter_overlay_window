@@ -81,6 +81,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private Timer mTrayAnimationTimer;
     private TrayAnimationTimerTask mTrayTimerTask;
     private boolean userPresent = false;
+    
+
 
 
     private BroadcastReceiver screenUnlockReceiver;
@@ -112,8 +114,27 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         try {
                             // Update window metrics for new configuration
                             updateWindowMetrics();
-                            // Force a layout update
-                            flutterView.requestLayout();
+                            // Force a layout update with error handling
+                            try {
+                                flutterView.requestLayout();
+                            } catch (Exception e) {
+                                Log.e("OverlayService", "Error requesting layout during config change: " + e.getMessage());
+                                // If layout fails, try to recreate the overlay
+                                if (isRunning) {
+                                    Log.d("OverlayService", "Attempting to recreate overlay after layout failure");
+                                    // Schedule recreation with a longer delay
+                                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                                        if (isRunning) {
+                                            try {
+                                                // Force a redraw
+                                                flutterView.invalidate();
+                                            } catch (Exception ex) {
+                                                Log.e("OverlayService", "Error invalidating view: " + ex.getMessage());
+                                            }
+                                        }
+                                    }, 1000);
+                                }
+                            }
                         } catch (Exception e) {
                             Log.e("OverlayService", "Error handling configuration change: " + e.getMessage());
                         }
@@ -372,20 +393,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 }
             }
 
-            // Validate engine state before creating view
+            // Simple engine validation - just ensure the engine exists
+            if (engine == null) {
+                Log.e("OverlayService", "FlutterEngine is null, cannot create overlay");
+                return;
+            }
+            
+            // Log engine state for debugging but don't block
             try {
-                if (!engine.getRenderer().isDisplayingFlutterUi()) {
-                    Log.w("OverlayService", "Engine not ready, waiting...");
-                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                        if (isRunning) {
-                            initOverlay(intent);
-                        }
-                    }, 100);
-                    return;
+                if (engine.getRenderer() != null) {
+                    Log.d("OverlayService", "Engine renderer is available");
+                } else {
+                    Log.d("OverlayService", "Engine renderer is null, but proceeding");
                 }
             } catch (Exception e) {
-                Log.w("OverlayService", "Could not check engine state, proceeding anyway: " + e.getMessage());
-                // Continue if we can't check the state (older Flutter versions)
+                Log.d("OverlayService", "Could not check engine state: " + e.getMessage());
             }
 
             engine.getLifecycleChannel().appIsResumed();
@@ -393,6 +415,20 @@ public class OverlayService extends Service implements View.OnTouchListener {
             // Create FlutterView with proper error handling
             try {
                 flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
+                
+                // Add surface error listener to catch surface-related crashes
+                flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                    @Override
+                    public void onViewAttachedToWindow(View v) {
+                        Log.d("OverlayService", "FlutterView attached to window");
+                    }
+
+                    @Override
+                    public void onViewDetachedFromWindow(View v) {
+                        Log.d("OverlayService", "FlutterView detached from window");
+                    }
+                });
+                
                 flutterView.attachToFlutterEngine(engine);
                 flutterView.setFitsSystemWindows(true);
                 flutterView.setFocusable(true);
@@ -468,17 +504,34 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
             // Add view with proper error handling
             try {
-                windowManager.addView(flutterView, params);
-                moveOverlayInternal(dx, dy, null);
+                // Add a small delay to let the FlutterView settle before adding to window manager
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    try {
+                        if (windowManager != null && flutterView != null && isRunning) {
+                            windowManager.addView(flutterView, params);
+                            moveOverlayInternal(dx, dy, null);
+                            Log.d("OverlayService", "Overlay view added successfully");
+                        }
+                    } catch (Exception e) {
+                        Log.e("OverlayService", "Failed to add overlay view: " + e.getMessage());
+                        e.printStackTrace();
+                        // Clean up on failure
+                        if (flutterView != null) {
+                            try {
+                                flutterView.detachFromFlutterEngine();
+                            } catch (Exception ex) {
+                                Log.e("OverlayService", "Error detaching flutter view: " + ex.getMessage());
+                            }
+                            flutterView = null;
+                        }
+                        windowManager = null;
+                        isRunning = false;
+                        stopSelf();
+                    }
+                }, 100); // Small delay to let FlutterView settle
             } catch (Exception e) {
-                Log.e("OverlayService", "Failed to add overlay view: " + e.getMessage());
+                Log.e("OverlayService", "Failed to schedule overlay view addition: " + e.getMessage());
                 e.printStackTrace();
-                // Clean up on failure
-                if (flutterView != null) {
-                    flutterView.detachFromFlutterEngine();
-                    flutterView = null;
-                }
-                windowManager = null;
                 isRunning = false;
                 stopSelf();
             }

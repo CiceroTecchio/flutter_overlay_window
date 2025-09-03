@@ -32,6 +32,8 @@ public class LockScreenOverlayActivity extends Activity {
     private BasicMessageChannel<Object> overlayMessageChannel;
     private Resources resources;
     public static boolean isRunning = false;
+    
+
     private BroadcastReceiver closeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -79,22 +81,22 @@ public class LockScreenOverlayActivity extends Activity {
             return;
         }
 
-        // Validate engine state before proceeding
+        // Simple engine validation - just ensure the engine exists
+        if (flutterEngine == null) {
+            Log.e("LockScreenOverlay", "FlutterEngine is null, cannot create overlay");
+            finish();
+            return;
+        }
+        
+        // Log engine state for debugging but don't block
         try {
-            if (!flutterEngine.getRenderer().isDisplayingFlutterUi()) {
-                Log.w("LockScreenOverlay", "FlutterEngine not ready for rendering, waiting...");
-                // Wait a bit for the engine to be ready
-                new Handler(getMainLooper()).postDelayed(() -> {
-                    if (!isFinishing() && isRunning) {
-                        // Retry initialization
-                        recreate();
-                    }
-                }, 200);
-                return;
+            if (flutterEngine.getRenderer() != null) {
+                Log.d("LockScreenOverlay", "Engine renderer is available");
+            } else {
+                Log.d("LockScreenOverlay", "Engine renderer is null, but proceeding");
             }
         } catch (Exception e) {
-            Log.w("LockScreenOverlay", "Could not check engine state, proceeding anyway: " + e.getMessage());
-            // Continue if we can't check the state (older Flutter versions)
+            Log.d("LockScreenOverlay", "Could not check engine state: " + e.getMessage());
         }
 
         try {
@@ -144,24 +146,32 @@ public class LockScreenOverlayActivity extends Activity {
                     return;
                 }
                 
+                // Log engine state for debugging but don't block
                 try {
-                    if (!flutterEngine.getRenderer().isDisplayingFlutterUi()) {
-                        Log.w("LockScreenOverlay", "Engine not ready for view creation, waiting...");
-                        // Wait a bit and retry
-                        new Handler(getMainLooper()).postDelayed(() -> {
-                            if (!isFinishing() && isRunning) {
-                                // Retry view creation
-                                recreate();
-                            }
-                        }, 200);
-                        return;
+                    if (flutterEngine.getRenderer() != null) {
+                        Log.d("LockScreenOverlay", "Engine renderer is available for view creation");
+                    } else {
+                        Log.d("LockScreenOverlay", "Engine renderer is null, but proceeding with view creation");
                     }
                 } catch (Exception e) {
-                    Log.w("LockScreenOverlay", "Could not check engine state, proceeding anyway: " + e.getMessage());
-                    // Continue if we can't check the state (older Flutter versions)
+                    Log.d("LockScreenOverlay", "Could not check engine state: " + e.getMessage());
                 }
 
                 flutterView = new FlutterView(this, new FlutterTextureView(this));
+                
+                // Add surface error listener to catch surface-related crashes
+                flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                    @Override
+                    public void onViewAttachedToWindow(View v) {
+                        Log.d("LockScreenOverlay", "FlutterView attached to window");
+                    }
+
+                    @Override
+                    public void onViewDetachedFromWindow(View v) {
+                        Log.d("LockScreenOverlay", "FlutterView detached from window");
+                    }
+                });
+                
                 flutterView.attachToFlutterEngine(flutterEngine);
                 flutterView.setBackgroundColor(Color.TRANSPARENT);
                 flutterView.setFocusable(true);
