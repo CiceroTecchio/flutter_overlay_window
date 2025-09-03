@@ -7,6 +7,12 @@
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
 
     <application>
+        <service
+            android:name=".OverlayService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+            
         <activity
             android:name=".LockScreenOverlayActivity"
             android:theme="@style/Theme.Transparent"

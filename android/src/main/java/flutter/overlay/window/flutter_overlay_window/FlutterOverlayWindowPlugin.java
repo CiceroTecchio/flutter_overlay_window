@@ -172,8 +172,6 @@ public class FlutterOverlayWindowPlugin implements
             } else {
                 try {
                     final Intent intent = new Intent(context, OverlayService.class);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
                     intent.putExtra("startX", startX);
                     intent.putExtra("startY", startY);
                     intent.putExtra("width", width);

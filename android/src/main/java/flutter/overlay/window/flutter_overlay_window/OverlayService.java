@@ -27,7 +27,6 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.os.Handler;
 import android.os.Looper;
 import android.content.IntentFilter;
 import android.content.BroadcastReceiver;
@@ -102,6 +101,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
         }
     };
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
 
     private BroadcastReceiver configurationChangeReceiver = new BroadcastReceiver() {
         @Override
@@ -293,10 +297,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
     @Override
     public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
-        if (intent == null) {
-            return START_NOT_STICKY;
-        }
-        String action = intent.getAction();
+        try {
+            Log.d("OverlayService", "onStartCommand called with intent: " + (intent != null ? intent.getAction() : "null"));
+            
+            if (intent == null) {
+                Log.w("OverlayService", "Intent is null, returning START_NOT_STICKY");
+                return START_NOT_STICKY;
+            }
+            String action = intent.getAction();
 
         // 🔹 Se overlay já ativo e ação for apenas trazer para frente
         if (windowManager != null && flutterView != null && "SHOW_OVERLAY_AGAIN".equals(action)) {
@@ -320,6 +328,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
         initOverlay(intent);
 
         return START_STICKY;
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error in onStartCommand: " + e.getMessage());
+            e.printStackTrace();
+            isRunning = false;
+            stopSelf();
+            return START_NOT_STICKY;
+        }
     }
 
     private void initOverlay(Intent intent) {
@@ -552,6 +567,68 @@ public class OverlayService extends Service implements View.OnTouchListener {
             stopSelf();
         }
     }
+    
+    @Override
+    public void onDestroy() {
+        try {
+            Log.d("OverlayService", "onDestroy called");
+            isRunning = false;
+            
+            if (screenReceiver != null) {
+                try {
+                    unregisterReceiver(screenReceiver);
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Error unregistering screenReceiver: " + e.getMessage());
+                }
+            }
+            
+            if (screenUnlockReceiver != null && isReceiverRegistered) {
+                try {
+                    unregisterReceiver(screenUnlockReceiver);
+                    isReceiverRegistered = false;
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Error unregistering screenUnlockReceiver: " + e.getMessage());
+                }
+            }
+            
+            if (configurationChangeReceiver != null) {
+                try {
+                    unregisterReceiver(configurationChangeReceiver);
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Error unregistering configurationChangeReceiver: " + e.getMessage());
+                }
+            }
+            
+            if (flutterView != null) {
+                try {
+                    if (windowManager != null) {
+                        windowManager.removeView(flutterView);
+                    }
+                    flutterView.detachFromFlutterEngine();
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Error cleaning up flutterView: " + e.getMessage());
+                }
+                flutterView = null;
+            }
+            
+            if (mTrayAnimationTimer != null) {
+                try {
+                    mTrayAnimationTimer.cancel();
+                    mTrayAnimationTimer = null;
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Error canceling tray animation timer: " + e.getMessage());
+                }
+            }
+            
+            windowManager = null;
+            instance = null;
+            
+            super.onDestroy();
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error in onDestroy: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
     private int screenHeight() {
@@ -745,8 +822,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
             flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
             overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(),
                     OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
-        }
-         flutterChannel.setMethodCallHandler((call, result) -> {
+            
+            // Set up the method call handler only after flutterChannel is initialized
+            flutterChannel.setMethodCallHandler((call, result) -> {
                 switch (call.method) {
                     case "updateFlag":
                         String flag = call.argument("flag");
@@ -767,6 +845,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         result.notImplemented();
                 }
             });
+        }
 
         // 🔹 1. Criar canal e notificação rapidamente
         createNotificationChannel();
