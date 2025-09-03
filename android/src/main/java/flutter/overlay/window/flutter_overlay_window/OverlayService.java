@@ -562,6 +562,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             isRunning = false;
             stopSelf();
         }
+    }
 
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
