@@ -217,11 +217,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         isReceiverRegistered = true;
     }
 
-    @Nullable
-    @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
+
 
     @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
@@ -566,69 +562,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             isRunning = false;
             stopSelf();
         }
-    }
-    
-    @Override
-    public void onDestroy() {
-        try {
-            Log.d("OverlayService", "onDestroy called");
-            isRunning = false;
-            
-            if (screenReceiver != null) {
-                try {
-                    unregisterReceiver(screenReceiver);
-                } catch (Exception e) {
-                    Log.e("OverlayService", "Error unregistering screenReceiver: " + e.getMessage());
-                }
-            }
-            
-            if (screenUnlockReceiver != null && isReceiverRegistered) {
-                try {
-                    unregisterReceiver(screenUnlockReceiver);
-                    isReceiverRegistered = false;
-                } catch (Exception e) {
-                    Log.e("OverlayService", "Error unregistering screenUnlockReceiver: " + e.getMessage());
-                }
-            }
-            
-            if (configurationChangeReceiver != null) {
-                try {
-                    unregisterReceiver(configurationChangeReceiver);
-                } catch (Exception e) {
-                    Log.e("OverlayService", "Error unregistering configurationChangeReceiver: " + e.getMessage());
-                }
-            }
-            
-            if (flutterView != null) {
-                try {
-                    if (windowManager != null) {
-                        windowManager.removeView(flutterView);
-                    }
-                    flutterView.detachFromFlutterEngine();
-                } catch (Exception e) {
-                    Log.e("OverlayService", "Error cleaning up flutterView: " + e.getMessage());
-                }
-                flutterView = null;
-            }
-            
-            if (mTrayAnimationTimer != null) {
-                try {
-                    mTrayAnimationTimer.cancel();
-                    mTrayAnimationTimer = null;
-                } catch (Exception e) {
-                    Log.e("OverlayService", "Error canceling tray animation timer: " + e.getMessage());
-                }
-            }
-            
-            windowManager = null;
-            instance = null;
-            
-            super.onDestroy();
-        } catch (Exception e) {
-            Log.e("OverlayService", "Error in onDestroy: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
+
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
     private int screenHeight() {
