@@ -81,7 +81,7 @@ public class LockScreenOverlayActivity extends Activity {
 
         // Validate engine state before proceeding
         try {
-            if (!flutterEngine.getRenderer().isRenderingToSurface()) {
+            if (!flutterEngine.getRenderer().isDisplayingFlutterUi()) {
                 Log.w("LockScreenOverlay", "FlutterEngine not ready for rendering, waiting...");
                 // Wait a bit for the engine to be ready
                 new Handler(getMainLooper()).postDelayed(() -> {
@@ -93,9 +93,8 @@ public class LockScreenOverlayActivity extends Activity {
                 return;
             }
         } catch (Exception e) {
-            Log.e("LockScreenOverlay", "Error checking engine state: " + e.getMessage());
-            finish();
-            return;
+            Log.w("LockScreenOverlay", "Could not check engine state, proceeding anyway: " + e.getMessage());
+            // Continue if we can't check the state (older Flutter versions)
         }
 
         try {
@@ -139,10 +138,27 @@ public class LockScreenOverlayActivity extends Activity {
         new Handler(getMainLooper()).post(() -> {
             try {
                 // Validate engine state again before creating view
-                if (flutterEngine == null || !flutterEngine.getRenderer().isRenderingToSurface()) {
-                    Log.e("LockScreenOverlay", "Engine not ready for view creation");
+                if (flutterEngine == null) {
+                    Log.e("LockScreenOverlay", "Engine is null");
                     finish();
                     return;
+                }
+                
+                try {
+                    if (!flutterEngine.getRenderer().isDisplayingFlutterUi()) {
+                        Log.w("LockScreenOverlay", "Engine not ready for view creation, waiting...");
+                        // Wait a bit and retry
+                        new Handler(getMainLooper()).postDelayed(() -> {
+                            if (!isFinishing() && isRunning) {
+                                // Retry view creation
+                                recreate();
+                            }
+                        }, 200);
+                        return;
+                    }
+                } catch (Exception e) {
+                    Log.w("LockScreenOverlay", "Could not check engine state, proceeding anyway: " + e.getMessage());
+                    // Continue if we can't check the state (older Flutter versions)
                 }
 
                 flutterView = new FlutterView(this, new FlutterTextureView(this));

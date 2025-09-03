@@ -373,14 +373,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
 
             // Validate engine state before creating view
-            if (!engine.getRenderer().isRenderingToSurface()) {
-                Log.w("OverlayService", "Engine not ready, waiting...");
-                new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    if (isRunning) {
-                        initOverlay(intent);
-                    }
-                }, 100);
-                return;
+            try {
+                if (!engine.getRenderer().isDisplayingFlutterUi()) {
+                    Log.w("OverlayService", "Engine not ready, waiting...");
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        if (isRunning) {
+                            initOverlay(intent);
+                        }
+                    }, 100);
+                    return;
+                }
+            } catch (Exception e) {
+                Log.w("OverlayService", "Could not check engine state, proceeding anyway: " + e.getMessage());
+                // Continue if we can't check the state (older Flutter versions)
             }
 
             engine.getLifecycleChannel().appIsResumed();
