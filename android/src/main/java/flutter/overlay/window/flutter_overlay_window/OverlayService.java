@@ -51,6 +51,8 @@ import io.flutter.plugin.common.BasicMessageChannel;
 import io.flutter.plugin.common.JSONMessageCodec;
 import io.flutter.plugin.common.MethodChannel;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public class OverlayService extends Service implements View.OnTouchListener {
     private final int DEFAULT_NAV_BAR_HEIGHT_DP = 48;
     private final int DEFAULT_STATUS_BAR_HEIGHT_DP = 25;
@@ -61,7 +63,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     public static final String INTENT_EXTRA_IS_CLOSE_WINDOW = "IsCloseWindow";
 
-    private static OverlayService instance;
+    public static OverlayService instance;
     public static boolean isRunning = false;
     private WindowManager windowManager = null;
     private FlutterView flutterView;
@@ -84,6 +86,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
     // Flag to track if foreground service was successfully started
     private boolean isForegroundService = false;
 
+    // Critical safety flags to prevent segfaults
+    private final AtomicBoolean isDestroyed = new AtomicBoolean(false);
+    private final AtomicBoolean isEngineValid = new AtomicBoolean(false);
+    private final Object engineLock = new Object();
 
     private BroadcastReceiver screenUnlockReceiver;
     private boolean isReceiverRegistered = false;
