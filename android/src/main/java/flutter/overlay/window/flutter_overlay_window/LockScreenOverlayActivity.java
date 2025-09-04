@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Handler;
+import android.os.Looper;
 
 import android.app.Activity;
 import android.os.Build;
@@ -25,6 +26,7 @@ import io.flutter.embedding.engine.FlutterEngineCache;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.BasicMessageChannel;
 import io.flutter.plugin.common.JSONMessageCodec;
+import flutter.overlay.window.flutter_overlay_window.FlutterEngineManager;
 
 public class LockScreenOverlayActivity extends Activity {
     private FlutterView flutterView;
@@ -33,13 +35,16 @@ public class LockScreenOverlayActivity extends Activity {
     private BasicMessageChannel<Object> overlayMessageChannel;
     private Resources resources;
     public static boolean isRunning = false;
+    private static final String TAG = "LockScreenOverlay";
+    private boolean isDestroyed = false;
+    private final Object engineLock = new Object();
     
 
     private BroadcastReceiver closeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            Log.d("LockScreenOverlay", "Broadcast recebido, fechando activity");
-            finish();
+            Log.d(TAG, "Broadcast recebido, fechando activity");
+            safeFinish();
             isRunning = false;
         }
     };
@@ -47,14 +52,80 @@ public class LockScreenOverlayActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Log.d("LockScreenOverlay", "onCreate chamado");
-        IntentFilter filter = new IntentFilter("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(closeReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(closeReceiver, filter);
-        }
+        Log.d(TAG, "onCreate chamado");
+        
+        try {
+            // Set up window flags first
+            setupWindowFlags();
+            
+            // Register receiver
+            registerCloseReceiver();
+            
+            // Initialize resources
+            resources = getResources();
 
+            // Safe engine retrieval with proper synchronization
+            synchronized (engineLock) {
+                if (isDestroyed) return;
+                
+                flutterEngine = FlutterEngineManager.getEngine(OverlayConstants.CACHED_TAG);
+                if (flutterEngine == null) {
+                    Log.e(TAG, "FlutterEngine não encontrado");
+                    safeFinish();
+                    return;
+                }
+            }
+
+            // Safe engine lifecycle management
+            try {
+                if (flutterEngine.getLifecycleChannel() != null) {
+                    flutterEngine.getLifecycleChannel().appIsResumed();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error resuming engine: " + e.getMessage());
+                safeFinish();
+                return;
+            }
+
+            isRunning = true;
+            
+            // Create channels only if engine is valid
+            synchronized (engineLock) {
+                if (isDestroyed || !FlutterEngineManager.isEngineValid(flutterEngine)) {
+                    safeFinish();
+                    return;
+                }
+                
+                try {
+                    flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
+                    overlayMessageChannel = new BasicMessageChannel<>(flutterEngine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error creating channels: " + e.getMessage());
+                    safeFinish();
+                    return;
+                }
+            }
+
+            setupMethodChannels();
+
+            Intent intent = getIntent();
+            int width = intent.getIntExtra("width", 300);
+            int height = intent.getIntExtra("height", 300);
+
+            final int pxWidth = (width == -1999 || width == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(width);
+            final int pxHeight = (height == -1999 || height == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(height);
+
+            // Create FlutterView on main thread with proper error handling
+            createFlutterView(pxWidth, pxHeight);
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Critical error in onCreate: " + e.getMessage());
+            e.printStackTrace();
+            safeFinish();
+        }
+    }
+
+    private void setupWindowFlags() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
@@ -70,113 +141,96 @@ public class LockScreenOverlayActivity extends Activity {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O_MR1) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
         }
-        
-        resources = getResources();
+    }
 
-        flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-        if (flutterEngine == null) {
-            Log.e("LockScreenOverlay", "FlutterEngine não encontrado");
-            finish();
-            isRunning = false;
-            return;
+    private void registerCloseReceiver() {
+        IntentFilter filter = new IntentFilter("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(closeReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(closeReceiver, filter);
         }
+    }
 
-        // Simple engine validation - just ensure the engine exists
-        if (flutterEngine == null) {
-            Log.e("LockScreenOverlay", "FlutterEngine is null, cannot create overlay");
-            finish();
-            return;
-        }
-        
-        // Log engine state for debugging but don't block
-        try {
-            if (flutterEngine.getRenderer() != null) {
-                Log.d("LockScreenOverlay", "Engine renderer is available");
-            } else {
-                Log.d("LockScreenOverlay", "Engine renderer is null, but proceeding");
-            }
-        } catch (Exception e) {
-            Log.d("LockScreenOverlay", "Could not check engine state: " + e.getMessage());
-        }
-
-        try {
-            flutterEngine.getLifecycleChannel().appIsResumed();
-        } catch (Exception e) {
-            Log.e("LockScreenOverlay", "Error resuming engine: " + e.getMessage());
-            finish();
-            return;
-        }
-
-        isRunning = true;
-        flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
-        overlayMessageChannel = new BasicMessageChannel<>(flutterEngine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
-
+    private void setupMethodChannels() {
         flutterChannel.setMethodCallHandler((call, result) -> {
-            if ("close".equals(call.method)) {
-                finish();
-                isRunning = false;
-                result.success(true);
-            } else {
-                result.notImplemented();
+            try {
+                if ("close".equals(call.method)) {
+                    safeFinish();
+                    result.success(true);
+                } else {
+                    result.notImplemented();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error handling method call: " + e.getMessage());
+                result.error("ERROR", "Method call failed", e.getMessage());
             }
         });
 
         overlayMessageChannel.setMessageHandler((message, reply) -> {
             try {
-                WindowSetup.messenger.send(message);
+                if (WindowSetup.messenger != null) {
+                    WindowSetup.messenger.send(message);
+                }
             } catch (Exception e) {
-                Log.e("LockScreenOverlay", "Error sending message: " + e.getMessage());
+                Log.e(TAG, "Error sending message: " + e.getMessage());
             }
         });
+    }
 
-        Intent intent = getIntent();
-        int width = intent.getIntExtra("width", 300);
-        int height = intent.getIntExtra("height", 300);
-
-       
-        final int pxWidth = (width == -1999 || width == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(width);
-        final int pxHeight = (height == -1999 || height == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(height);
-
-        new Handler(getMainLooper()).post(() -> {
+    private void createFlutterView(final int pxWidth, final int pxHeight) {
+        new Handler(Looper.getMainLooper()).post(() -> {
             try {
-                // Validate engine state again before creating view
-                if (flutterEngine == null) {
-                    Log.e("LockScreenOverlay", "Engine is null");
-                    finish();
-                    return;
-                }
+                if (isDestroyed) return;
                 
-                // Log engine state for debugging but don't block
-                try {
-                    if (flutterEngine.getRenderer() != null) {
-                        Log.d("LockScreenOverlay", "Engine renderer is available for view creation");
-                    } else {
-                        Log.d("LockScreenOverlay", "Engine renderer is null, but proceeding with view creation");
+                // Re-validate engine state before creating view
+                synchronized (engineLock) {
+                    if (!FlutterEngineManager.isEngineValid(flutterEngine)) {
+                        Log.e(TAG, "Engine is invalid during view creation");
+                        safeFinish();
+                        return;
                     }
-                } catch (Exception e) {
-                    Log.d("LockScreenOverlay", "Could not check engine state: " + e.getMessage());
                 }
 
+                // Create FlutterView with error handling
                 flutterView = new FlutterView(this, new FlutterTextureView(this));
                 
                 // Add surface error listener to catch surface-related crashes
                 flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
                     @Override
                     public void onViewAttachedToWindow(View v) {
-                        Log.d("LockScreenOverlay", "FlutterView attached to window");
+                        Log.d(TAG, "FlutterView attached to window");
                     }
 
                     @Override
                     public void onViewDetachedFromWindow(View v) {
-                        Log.d("LockScreenOverlay", "FlutterView detached from window");
+                        Log.d(TAG, "FlutterView detached from window");
                     }
                 });
                 
-                flutterView.attachToFlutterEngine(flutterEngine);
+                // Safe engine attachment
+                synchronized (engineLock) {
+                    if (isDestroyed || !FlutterEngineManager.isEngineValid(flutterEngine)) {
+                        Log.e(TAG, "Engine invalid during view attachment");
+                        safeFinish();
+                        return;
+                    }
+                    
+                    try {
+                        flutterView.attachToFlutterEngine(flutterEngine);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error attaching view to engine: " + e.getMessage());
+                        safeFinish();
+                        return;
+                    }
+                }
+                
+                // Configure view properties
                 flutterView.setBackgroundColor(Color.TRANSPARENT);
                 flutterView.setFocusable(true);
                 flutterView.setFocusableInTouchMode(true);
 
+                // Create layout
                 FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(pxWidth, pxHeight);
                 layoutParams.gravity = Gravity.CENTER;
 
@@ -187,50 +241,98 @@ public class LockScreenOverlayActivity extends Activity {
                 root.addView(flutterView, layoutParams);
 
                 setContentView(root);
+                
             } catch (Exception e) {
-                Log.e("LockScreenOverlay", "Error creating FlutterView: " + e.getMessage());
+                Log.e(TAG, "Error creating FlutterView: " + e.getMessage());
                 e.printStackTrace();
-                finish();
+                safeFinish();
             }
         });
     }
 
     @Override
-    
     public void onDestroy() {
-        super.onDestroy();
-        unregisterReceiver(closeReceiver);
-        Log.d("LockScreenOverlay", "Destroying the overlay lock screen window service");
-        try{
-            FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-            if (engine != null) {
-                Log.d("LockScreenOverlay", "Parando som do ringtone");
-                new MethodChannel(engine.getDartExecutor(), "my_custom_overlay_channel").invokeMethod("onOverlayClosed", null);
+        try {
+            isDestroyed = true;
+            isRunning = false;
+            
+            if (closeReceiver != null) {
+                try {
+                    unregisterReceiver(closeReceiver);
+                } catch (Exception e) {
+                    Log.w(TAG, "Error unregistering receiver: " + e.getMessage());
+                }
             }
+            
+            Log.d(TAG, "Destroying the overlay lock screen window service");
+            
+            // Safe engine access for cleanup
+            synchronized (engineLock) {
+                if (flutterEngine != null && FlutterEngineManager.isEngineValid(flutterEngine)) {
+                    try {
+                        Log.d(TAG, "Parando som do ringtone");
+                        new MethodChannel(flutterEngine.getDartExecutor(), "my_custom_overlay_channel").invokeMethod("onOverlayClosed", null);
+                    } catch (Exception e) {
+                        Log.d(TAG, "Falha ao parar som do ringtone: " + e.getMessage());
+                    }
+                }
+            }
+            
+            // Safe view cleanup
+            if (flutterView != null) {
+                try {
+                    flutterView.detachFromFlutterEngine();
+                } catch (Exception e) {
+                    Log.w(TAG, "Error detaching view from engine: " + e.getMessage());
+                }
+                flutterView = null;
+            }
+            
+            // Clear references
+            synchronized (engineLock) {
+                flutterEngine = null;
+                flutterChannel = null;
+                overlayMessageChannel = null;
+            }
+            
         } catch (Exception e) {
-            Log.d("LockScreenOverlay", "Falha ao parar som do ringtone");
+            Log.e(TAG, "Error in onDestroy: " + e.getMessage());
             e.printStackTrace();
+        } finally {
+            super.onDestroy();
         }
-        
-       if (flutterView != null) {
-            flutterView.detachFromFlutterEngine();
-            flutterView = null; // opcional
-        }
-        isRunning = false;
     }
 
     private int dpToPx(int dp) {
-        return (int) (dp * resources.getDisplayMetrics().density);
+        try {
+            if (resources != null) {
+                return (int) (dp * resources.getDisplayMetrics().density);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error converting dp to px: " + e.getMessage());
+        }
+        return dp; // fallback
     }
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        Log.d("LockScreenOverlay", "onNewIntent chamado – activity reordenada para frente.");
+        Log.d(TAG, "onNewIntent chamado – activity reordenada para frente.");
         setIntent(intent); // Atualiza intent se quiser usar extras
     }
     @Override
     public void onBackPressed() {
         // Não chama super, assim botão voltar não fecha
-        Log.d("LockScreenOverlay", "Botão voltar desativado");
+        Log.d(TAG, "Botão voltar desativado");
+    }
+
+    /**
+     * Safe finish method that prevents multiple calls
+     */
+    private void safeFinish() {
+        if (!isDestroyed) {
+            isDestroyed = true;
+            isRunning = false;
+            finish();
+        }
     }
 }

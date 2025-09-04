@@ -171,16 +171,53 @@ public class FlutterOverlayWindowPlugin implements
                 }
             } else {
                 try {
-                    final Intent intent = new Intent(context, OverlayService.class);
-                    intent.putExtra("startX", startX);
-                    intent.putExtra("startY", startY);
-                    intent.putExtra("width", width);
-                    intent.putExtra("height", height);
-                    intent.putExtra("enableDrag", enableDrag);
-                    intent.putExtra("alignment", alignment);
-                    intent.putExtra("overlayTitle", overlayTitle);
-                    intent.putExtra("overlayContent", overlayContent);
-                    context.startService(intent);
+                    // Check if we can start foreground service from this context
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && 
+                        !OverlayService.canStartForegroundService(context)) {
+                        Log.w("OverlayPlugin", "Cannot start foreground service from this context, trying alternative approach");
+                        
+                        // Try to start the service with a different approach
+                        // This might work in some cases where the original context doesn't allow foreground service
+                        Intent intent = new Intent(context, OverlayService.class);
+                        intent.putExtra("startX", startX);
+                        intent.putExtra("startY", startY);
+                        intent.putExtra("width", width);
+                        intent.putExtra("height", height);
+                        intent.putExtra("enableDrag", enableDrag);
+                        intent.putExtra("alignment", alignment);
+                        intent.putExtra("overlayTitle", overlayTitle);
+                        intent.putExtra("overlayContent", overlayContent);
+                        
+                        // Try to start as foreground service first
+                        try {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                context.startForegroundService(intent);
+                            } else {
+                                context.startService(intent);
+                            }
+                        } catch (Exception e) {
+                            Log.w("OverlayPlugin", "startForegroundService failed, trying startService: " + e.getMessage());
+                            // Fallback to regular service start
+                            context.startService(intent);
+                        }
+                    } else {
+                        // Normal service start
+                        final Intent intent = new Intent(context, OverlayService.class);
+                        intent.putExtra("startX", startX);
+                        intent.putExtra("startY", startY);
+                        intent.putExtra("width", width);
+                        intent.putExtra("height", height);
+                        intent.putExtra("enableDrag", enableDrag);
+                        intent.putExtra("alignment", alignment);
+                        intent.putExtra("overlayTitle", overlayTitle);
+                        intent.putExtra("overlayContent", overlayContent);
+                        
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(intent);
+                        } else {
+                            context.startService(intent);
+                        }
+                    }
                 } catch (Exception e) {
                     Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
                     e.printStackTrace();
@@ -247,6 +284,108 @@ public class FlutterOverlayWindowPlugin implements
                 Log.e("OverlayPlugin", "Failed to close overlay: " + e.getMessage());
                 e.printStackTrace();
                 result.error("CLOSE_ERROR", "Failed to close overlay", e.getMessage());
+            }
+            return;
+        } else if (call.method.equals("promoteToForeground")) {
+            try {
+                // Try to promote the service to foreground if it's running
+                if (OverlayService.isRunning && OverlayService.instance != null) {
+                    OverlayService.instance.tryPromoteToForeground();
+                    result.success(true);
+                } else {
+                    result.success(false);
+                }
+            } catch (Exception e) {
+                Log.e("OverlayPlugin", "Failed to promote service to foreground: " + e.getMessage());
+                e.printStackTrace();
+                result.error("PROMOTE_ERROR", "Failed to promote service to foreground", e.getMessage());
+            }
+            return;
+        } else if (call.method.equals("canStartForegroundService")) {
+            try {
+                boolean canStart = OverlayService.canStartForegroundService(context);
+                result.success(canStart);
+            } catch (Exception e) {
+                Log.e("OverlayPlugin", "Failed to check foreground service capability: " + e.getMessage());
+                e.printStackTrace();
+                result.error("CHECK_ERROR", "Failed to check foreground service capability", e.getMessage());
+            }
+            return;
+        } else if (call.method.equals("startOverlayWithFallback")) {
+            try {
+                // Try to start overlay with fallback approach for foreground service issues
+                if (!checkOverlayPermission()) {
+                    result.error("PERMISSION", "overlay permission is not enabled", null);
+                    return;
+                }
+                
+                Integer height = call.argument("height");
+                Integer width = call.argument("width");
+                String alignment = call.argument("alignment");
+                String flag = call.argument("flag");
+                String overlayTitle = call.argument("overlayTitle");
+                String overlayContent = call.argument("overlayContent");
+                String notificationVisibility = call.argument("notificationVisibility");
+                boolean enableDrag = call.argument("enableDrag");
+                String positionGravity = call.argument("positionGravity");
+                Map<String, Integer> startPosition = call.argument("startPosition");
+                int startX = startPosition != null ? startPosition.getOrDefault("x", OverlayConstants.DEFAULT_XY) : OverlayConstants.DEFAULT_XY;
+                int startY = startPosition != null ? startPosition.getOrDefault("y", OverlayConstants.DEFAULT_XY) : OverlayConstants.DEFAULT_XY;
+
+                WindowSetup.width = width != null ? width : -1;
+                WindowSetup.height = height != null ? height : -1;
+                WindowSetup.enableDrag = enableDrag;
+                WindowSetup.setGravityFromAlignment(alignment != null ? alignment : "center");
+                WindowSetup.setFlag(flag != null ? flag : "flagNotFocusable");
+                WindowSetup.overlayTitle = overlayTitle;
+                WindowSetup.overlayContent = overlayContent == null ? "" : overlayContent;
+                WindowSetup.positionGravity = positionGravity;
+                WindowSetup.setNotificationVisibility(notificationVisibility);
+
+                // Try multiple approaches to start the service
+                Intent intent = new Intent(context, OverlayService.class);
+                intent.putExtra("startX", startX);
+                intent.putExtra("startY", startY);
+                intent.putExtra("width", width);
+                intent.putExtra("height", height);
+                intent.putExtra("enableDrag", enableDrag);
+                intent.putExtra("alignment", alignment);
+                intent.putExtra("overlayTitle", overlayTitle);
+                intent.putExtra("overlayContent", overlayContent);
+
+                boolean serviceStarted = false;
+                
+                // Try startForegroundService first
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    try {
+                        context.startForegroundService(intent);
+                        serviceStarted = true;
+                        Log.d("OverlayPlugin", "Service started with startForegroundService");
+                    } catch (Exception e) {
+                        Log.w("OverlayPlugin", "startForegroundService failed: " + e.getMessage());
+                    }
+                }
+                
+                // Fallback to startService if startForegroundService failed
+                if (!serviceStarted) {
+                    try {
+                        context.startService(intent);
+                        serviceStarted = true;
+                        Log.d("OverlayPlugin", "Service started with startService");
+                    } catch (Exception e) {
+                        Log.w("OverlayPlugin", "startService failed: " + e.getMessage());
+                    }
+                }
+                
+                if (serviceStarted) {
+                    result.success(true);
+                } else {
+                    result.error("SERVICE_ERROR", "Failed to start overlay service with all methods", null);
+                }
+            } catch (Exception e) {
+                Log.e("OverlayPlugin", "Failed to start overlay with fallback: " + e.getMessage());
+                e.printStackTrace();
+                result.error("FALLBACK_ERROR", "Failed to start overlay with fallback", e.getMessage());
             }
             return;
         } else {

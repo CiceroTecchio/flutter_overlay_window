@@ -81,7 +81,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private TrayAnimationTimerTask mTrayTimerTask;
     private boolean userPresent = false;
     
-
+    // Flag to track if foreground service was successfully started
+    private boolean isForegroundService = false;
 
 
     private BroadcastReceiver screenUnlockReceiver;
@@ -803,20 +804,128 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 .build();
         notification.flags |= Notification.FLAG_NO_CLEAR;
 
-        if (Build.VERSION.SDK_INT >= 34) {
-            int foregroundType = 0;
-            try {
-                foregroundType = (int) ServiceInfo.class
-                        .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
-            } catch (Exception e) {
-                e.printStackTrace();
+        // Try to start foreground service with proper error handling
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                int foregroundType = 0;
+                try {
+                    foregroundType = (int) ServiceInfo.class
+                            .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
+                } catch (Exception e) {
+                    Log.w("OverlayService", "Could not get FOREGROUND_SERVICE_TYPE_SPECIAL_USE, using 0: " + e.getMessage());
+                    foregroundType = 0;
+                }
+                startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
+                isForegroundService = true;
+                Log.d("OverlayService", "Service started as foreground service successfully (API 34+)");
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForeground(OverlayConstants.NOTIFICATION_ID, notification);
+                isForegroundService = true;
+                Log.d("OverlayService", "Service started as foreground service successfully (API 26+)");
+            } else {
+                // For older versions, just start the service normally
+                Log.d("OverlayService", "Starting service normally for older Android version");
             }
-            startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
-        } else {
-            startForeground(OverlayConstants.NOTIFICATION_ID, notification);
+        } catch (SecurityException e) {
+            Log.w("OverlayService", "SecurityException when starting foreground service: " + e.getMessage());
+            // Continue without foreground service - the overlay will still work
+            // but might be killed by the system more easily
+            isForegroundService = false;
+        } catch (IllegalStateException e) {
+            Log.w("OverlayService", "IllegalStateException when starting foreground service: " + e.getMessage());
+            // This usually means the service context doesn't allow foreground service
+            // Continue without foreground service
+            isForegroundService = false;
+        } catch (Exception e) {
+            Log.e("OverlayService", "Unexpected error starting foreground service: " + e.getMessage());
+            // Continue without foreground service
+            isForegroundService = false;
         }
 
         instance = this;
+    }
+
+    /**
+     * Attempts to promote the service to foreground if it wasn't started as such
+     * This can be called when the service context changes and allows foreground service
+     */
+    public void tryPromoteToForeground() {
+        if (isForegroundService) {
+            Log.d("OverlayService", "Service is already a foreground service");
+            return;
+        }
+
+        try {
+            // Create notification if not already created
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                createNotificationChannel();
+                Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                        ? PendingIntent.FLAG_IMMUTABLE
+                        : PendingIntent.FLAG_UPDATE_CURRENT;
+                PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingFlags);
+
+                int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
+                Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
+                        .setContentTitle(WindowSetup.overlayTitle)
+                        .setContentText(WindowSetup.overlayContent)
+                        .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
+                        .setContentIntent(pendingIntent)
+                        .setVisibility(WindowSetup.notificationVisibility)
+                        .setOngoing(true)
+                        .setSound(null)
+                        .setVibrate(new long[]{0L})
+                        .build();
+                notification.flags |= Notification.FLAG_NO_CLEAR;
+
+                if (Build.VERSION.SDK_INT >= 34) {
+                    int foregroundType = 0;
+                    try {
+                        foregroundType = (int) ServiceInfo.class
+                                .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
+                    } catch (Exception e) {
+                        Log.w("OverlayService", "Could not get FOREGROUND_SERVICE_TYPE_SPECIAL_USE, using 0: " + e.getMessage());
+                        foregroundType = 0;
+                    }
+                    startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
+                } else {
+                    startForeground(OverlayConstants.NOTIFICATION_ID, notification);
+                }
+                
+                isForegroundService = true;
+                Log.d("OverlayService", "Service successfully promoted to foreground service");
+            }
+        } catch (Exception e) {
+            Log.w("OverlayService", "Failed to promote service to foreground: " + e.getMessage());
+            // Continue without foreground service
+        }
+    }
+
+    /**
+     * Checks if the current context allows starting foreground services
+     * @return true if foreground service is allowed, false otherwise
+     */
+    public static boolean canStartForegroundService(Context context) {
+        try {
+            // Try to create a test notification to see if we can start foreground
+            NotificationManager notificationManager = (NotificationManager) 
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
+            
+            if (notificationManager == null) {
+                return false;
+            }
+
+            // Check if we have the required permissions
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return context.checkSelfPermission(android.Manifest.permission.FOREGROUND_SERVICE) == 
+                       android.content.pm.PackageManager.PERMISSION_GRANTED;
+            }
+            
+            return true;
+        } catch (Exception e) {
+            Log.w("OverlayService", "Error checking foreground service capability: " + e.getMessage());
+            return false;
+        }
     }
 
     private void createNotificationChannel() {
