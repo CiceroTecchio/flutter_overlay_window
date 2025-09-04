@@ -408,7 +408,8 @@ public class FlutterOverlayWindowPlugin implements
     public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
         mActivity = binding.getActivity();
         binding.addActivityResultListener(this);
-        if (FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG) == null) {
+        FlutterEngine existingEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+        if (existingEngine == null || existingEngine.getDartExecutor() == null) {
             try {
                 FlutterEngineGroup enn = new FlutterEngineGroup(context);
                 DartExecutor.DartEntrypoint dEntry = new DartExecutor.DartEntrypoint(
@@ -461,11 +462,20 @@ public class FlutterOverlayWindowPlugin implements
 
     @Override
     public void onMessage(@Nullable Object message, @NonNull BasicMessageChannel.Reply reply) {
-        BasicMessageChannel overlayMessageChannel = new BasicMessageChannel<Object>(
-                FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG)
-                        .getDartExecutor(),
-                OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
-        overlayMessageChannel.send(message, reply);
+        try {
+            FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+            if (engine == null || engine.getDartExecutor() == null) {
+                Log.w("FlutterOverlayWindowPlugin", "Engine or DartExecutor is null, cannot send message");
+                return;
+            }
+            
+            BasicMessageChannel overlayMessageChannel = new BasicMessageChannel<Object>(
+                    engine.getDartExecutor(),
+                    OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+            overlayMessageChannel.send(message, reply);
+        } catch (Exception e) {
+            Log.e("FlutterOverlayWindowPlugin", "Error sending message: " + e.getMessage());
+        }
     }
 
     private boolean checkOverlayPermission() {
