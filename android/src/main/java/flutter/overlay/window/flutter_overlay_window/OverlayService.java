@@ -436,7 +436,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             
             // Update gravity for absolute positioning if specific coordinates are provided AND no alignment override
             boolean hasSpecificPosition = (startX != OverlayConstants.DEFAULT_XY || startY != OverlayConstants.DEFAULT_XY);
-            boolean hasAlignmentOverride = !WindowSetup.gravity.equals(Gravity.CENTER);
+            boolean hasAlignmentOverride = (WindowSetup.gravity != Gravity.CENTER);
             if (hasSpecificPosition && !hasAlignmentOverride && windowManager != null && flutterView != null) {
                 WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
                 params.gravity = Gravity.TOP | Gravity.LEFT;
@@ -693,7 +693,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             
             // Determine gravity based on whether we have specific positions AND no alignment override
             boolean hasSpecificPosition = (startX != OverlayConstants.DEFAULT_XY || startY != OverlayConstants.DEFAULT_XY);
-            boolean hasAlignmentOverride = !WindowSetup.gravity.equals(Gravity.CENTER);
+            boolean hasAlignmentOverride = (WindowSetup.gravity != Gravity.CENTER);
             
             if (hasSpecificPosition && !hasAlignmentOverride) {
                 // Use TOP|LEFT gravity for absolute positioning when specific coordinates are provided
