@@ -434,13 +434,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
             int newX = startX == OverlayConstants.DEFAULT_XY ? 0 : dpToPx(startX);
             int newY = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : dpToPx(startY);
             
-            // Update gravity for absolute positioning if specific coordinates are provided
+            // Update gravity for absolute positioning if specific coordinates are provided AND no alignment override
             boolean hasSpecificPosition = (startX != OverlayConstants.DEFAULT_XY || startY != OverlayConstants.DEFAULT_XY);
-            if (hasSpecificPosition && windowManager != null && flutterView != null) {
+            boolean hasAlignmentOverride = !WindowSetup.gravity.equals(Gravity.CENTER);
+            if (hasSpecificPosition && !hasAlignmentOverride && windowManager != null && flutterView != null) {
                 WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
                 params.gravity = Gravity.TOP | Gravity.LEFT;
                 windowManager.updateViewLayout(flutterView, params);
                 Log.d("OverlayService", "Updated gravity to TOP|LEFT for absolute positioning");
+            } else if (hasAlignmentOverride && windowManager != null && flutterView != null) {
+                WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+                params.gravity = WindowSetup.gravity;
+                windowManager.updateViewLayout(flutterView, params);
+                Log.d("OverlayService", "Updated gravity to alignment: " + WindowSetup.gravity);
             }
             
             moveOverlayInternal(newX, newY, null);
@@ -685,17 +691,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
             }
             
-            // Determine gravity based on whether we have specific positions
+            // Determine gravity based on whether we have specific positions AND no alignment override
             boolean hasSpecificPosition = (startX != OverlayConstants.DEFAULT_XY || startY != OverlayConstants.DEFAULT_XY);
+            boolean hasAlignmentOverride = !WindowSetup.gravity.equals(Gravity.CENTER);
             
-            if (hasSpecificPosition) {
+            if (hasSpecificPosition && !hasAlignmentOverride) {
                 // Use TOP|LEFT gravity for absolute positioning when specific coordinates are provided
+                // and no alignment is specified (alignment would override this)
                 params.gravity = Gravity.TOP | Gravity.LEFT;
                 Log.d("OverlayService", "Using absolute positioning with TOP|LEFT gravity");
             } else {
-                // Use WindowSetup gravity for default positioning
+                // Use WindowSetup gravity for alignment-based positioning
                 params.gravity = WindowSetup.gravity;
-                Log.d("OverlayService", "Using WindowSetup gravity: " + WindowSetup.gravity);
+                Log.d("OverlayService", "Using WindowSetup gravity: " + WindowSetup.gravity + " (hasSpecificPosition: " + hasSpecificPosition + ", hasAlignmentOverride: " + hasAlignmentOverride + ")");
             }
 
             // Add view with proper error handling
