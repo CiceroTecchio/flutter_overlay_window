@@ -1198,10 +1198,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     }
                     lastX = event.getRawX();
                     lastY = event.getRawY();
-                    // Simple approach: always move in the same direction as finger movement
-                    // This should work regardless of gravity for intuitive dragging
-                    int xx = params.x + (int) dx;
-                    int yy = params.y + (int) dy;
+                    // Handle movement based on gravity - only invert X for RIGHT gravity
+                    int xx, yy;
+                    
+                    if ((params.gravity & Gravity.RIGHT) != 0) {
+                        // For RIGHT gravity, invert X movement for intuitive dragging
+                        xx = params.x - (int) dx;
+                    } else {
+                        // For LEFT gravity, normal movement
+                        xx = params.x + (int) dx;
+                    }
+                    
+                    // Y movement is always normal (no inversion needed)
+                    yy = params.y + (int) dy;
                     params.x = xx;
                     params.y = yy;
                     if (windowManager != null) {
