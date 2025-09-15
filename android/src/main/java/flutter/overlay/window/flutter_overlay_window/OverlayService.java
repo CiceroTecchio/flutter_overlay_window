@@ -89,7 +89,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
     // Critical safety flags to prevent segfaults
     private final AtomicBoolean isDestroyed = new AtomicBoolean(false);
     private final AtomicBoolean isEngineValid = new AtomicBoolean(false);
+    private final AtomicBoolean isSurfaceValid = new AtomicBoolean(false);
     private final Object engineLock = new Object();
+    private final Object surfaceLock = new Object();
 
     private BroadcastReceiver screenUnlockReceiver;
     private boolean isReceiverRegistered = false;
@@ -136,27 +138,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         try {
                             // Update window metrics for new configuration
                             updateWindowMetrics();
-                            // Force a layout update with error handling
-                            try {
+                            
+                            // Use safe surface operation for layout updates
+                            safeSurfaceOperation(() -> {
                                 flutterView.requestLayout();
-                            } catch (Exception e) {
-                                Log.e("OverlayService", "Error requesting layout during config change: " + e.getMessage());
-                                // If layout fails, try to recreate the overlay
-                                if (isRunning) {
-                                    Log.d("OverlayService", "Attempting to recreate overlay after layout failure");
-                                    // Schedule recreation with a longer delay
-                                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                                        if (isRunning) {
-                                            try {
-                                                // Force a redraw
-                                                flutterView.invalidate();
-                                            } catch (Exception ex) {
-                                                Log.e("OverlayService", "Error invalidating view: " + ex.getMessage());
-                                            }
-                                        }
-                                    }, 1000);
-                                }
-                            }
+                                Log.d("OverlayService", "Layout requested after configuration change");
+                            }, "requestLayout after config change");
+                            
                         } catch (Exception e) {
                             Log.e("OverlayService", "Error handling configuration change: " + e.getMessage());
                         }
@@ -286,6 +274,59 @@ public class OverlayService extends Service implements View.OnTouchListener {
         return null;
     }
 
+    /**
+     * Safely validates and manages Flutter surface state
+     */
+    private boolean isSurfaceSafe() {
+        synchronized (surfaceLock) {
+            if (isDestroyed.get() || !isEngineValid.get()) {
+                return false;
+            }
+            
+            if (flutterView == null || windowManager == null) {
+                return false;
+            }
+            
+            try {
+                // Check if FlutterView is properly attached
+                if (flutterView.getParent() == null) {
+                    Log.w("OverlayService", "FlutterView not attached to parent");
+                    return false;
+                }
+                
+                // Check if the view is visible and has valid dimensions
+                if (flutterView.getWidth() <= 0 || flutterView.getHeight() <= 0) {
+                    Log.w("OverlayService", "FlutterView has invalid dimensions: " + 
+                          flutterView.getWidth() + "x" + flutterView.getHeight());
+                    return false;
+                }
+                
+                return true;
+            } catch (Exception e) {
+                Log.e("OverlayService", "Error checking surface safety: " + e.getMessage());
+                return false;
+            }
+        }
+    }
+
+    /**
+     * Safely performs surface operations with validation
+     */
+    private void safeSurfaceOperation(Runnable operation, String operationName) {
+        if (!isSurfaceSafe()) {
+            Log.w("OverlayService", "Surface not safe for operation: " + operationName);
+            return;
+        }
+        
+        try {
+            operation.run();
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error in surface operation " + operationName + ": " + e.getMessage());
+            // Mark surface as invalid if operation fails
+            isSurfaceValid.set(false);
+        }
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
     public void onDestroy() {
@@ -294,6 +335,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // Mark service as destroyed to prevent further operations
         isDestroyed.set(true);
         isEngineValid.set(false);
+        isSurfaceValid.set(false);
 
         try {
             // Safe engine access
@@ -396,6 +438,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
 
         mResources = getApplicationContext().getResources();
+
+        // Try to start as foreground service if not already started
+        if (!isForegroundService) {
+            tryStartForegroundService();
+        }
 
         initOverlay(intent);
 
@@ -507,6 +554,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
             
             // Create FlutterView with proper error handling
             try {
+                // Disable Impeller renderer to prevent surface crashes
+                // This is a safety measure for overlay windows
+                System.setProperty("flutter.impeller.enabled", "false");
+                
                 flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
                 
                 // Add surface error listener to catch surface-related crashes
@@ -514,11 +565,32 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     @Override
                     public void onViewAttachedToWindow(View v) {
                         Log.d("OverlayService", "FlutterView attached to window");
+                        isSurfaceValid.set(true);
                     }
 
                     @Override
                     public void onViewDetachedFromWindow(View v) {
                         Log.d("OverlayService", "FlutterView detached from window");
+                        isSurfaceValid.set(false);
+                    }
+                });
+                
+                // Add layout listener to monitor surface changes
+                flutterView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                    @Override
+                    public void onLayoutChange(View v, int left, int top, int right, int bottom, 
+                                             int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                        int width = right - left;
+                        int height = bottom - top;
+                        Log.d("OverlayService", "FlutterView layout changed: " + width + "x" + height);
+                        
+                        // Validate surface after layout change
+                        if (width > 0 && height > 0) {
+                            isSurfaceValid.set(true);
+                        } else {
+                            Log.w("OverlayService", "Invalid surface dimensions after layout change");
+                            isSurfaceValid.set(false);
+                        }
                     }
                 });
                 
@@ -528,9 +600,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.setFocusableInTouchMode(true);
                 flutterView.setBackgroundColor(Color.TRANSPARENT);
                 flutterView.setOnTouchListener(this);
+                
+                // Mark surface as valid after successful creation
+                isSurfaceValid.set(true);
             } catch (Exception e) {
                 Log.e("OverlayService", "Failed to create FlutterView: " + e.getMessage());
                 e.printStackTrace();
+                isSurfaceValid.set(false);
                 isRunning = false;
                 stopSelf();
                 return;
@@ -744,33 +820,40 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     private void resizeOverlay(int width, int height, boolean enableDrag, MethodChannel.Result result) {
-        if (windowManager != null) {
-            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-            params.width = (width == -1999 || width == -1) ? -1 : dpToPx(width);
-            params.height = (height != 1999 || height != -1) ? dpToPx(height) : height;
-            WindowSetup.enableDrag = enableDrag;
-            windowManager.updateViewLayout(flutterView, params);
-            if (result != null) {
-                result.success(true);
+        safeSurfaceOperation(() -> {
+            if (windowManager != null && flutterView != null) {
+                WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+                params.width = (width == -1999 || width == -1) ? -1 : dpToPx(width);
+                params.height = (height != 1999 || height != -1) ? dpToPx(height) : height;
+                WindowSetup.enableDrag = enableDrag;
+                windowManager.updateViewLayout(flutterView, params);
+                Log.d("OverlayService", "Overlay resized to: " + params.width + "x" + params.height);
+                if (result != null) {
+                    result.success(true);
+                }
+            } else {
+                if (result != null) {
+                    result.success(false);
+                }
             }
-        } else {
-            if (result != null) {
-                result.success(false);
-            }
-        }
+        }, "resizeOverlay");
     }
 
     private static boolean moveOverlayInternal(int x, int y, @Nullable MethodChannel.Result result) {
-        if (instance != null && instance.flutterView != null) {
-            if (instance.windowManager != null) {
-                WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
-                params.x = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
-                params.y = instance.dpToPx(y);
-                instance.windowManager.updateViewLayout(instance.flutterView, params);
-
-                if (result != null) result.success(true);
-                return true;
-            }
+        if (instance != null) {
+            instance.safeSurfaceOperation(() -> {
+                if (instance.flutterView != null && instance.windowManager != null) {
+                    WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
+                    params.x = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
+                    params.y = instance.dpToPx(y);
+                    instance.windowManager.updateViewLayout(instance.flutterView, params);
+                    Log.d("OverlayService", "Overlay moved to: " + params.x + "," + params.y);
+                    if (result != null) result.success(true);
+                } else {
+                    if (result != null) result.success(false);
+                }
+            }, "moveOverlayInternal");
+            return true;
         }
         if (result != null) result.success(false);
         return false;
@@ -870,29 +953,53 @@ public class OverlayService extends Service implements View.OnTouchListener {
             });
         }
 
-        // 🔹 1. Criar canal e notificação rapidamente
-        createNotificationChannel();
-        Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
-        int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                ? PendingIntent.FLAG_IMMUTABLE
-                : PendingIntent.FLAG_UPDATE_CURRENT;
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingFlags);
+        // Try to start as foreground service with proper error handling
+        tryStartForegroundService();
 
-        int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
-        Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
-                .setContentTitle(WindowSetup.overlayTitle)
-                .setContentText(WindowSetup.overlayContent)
-                .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
-                .setContentIntent(pendingIntent)
-                .setVisibility(WindowSetup.notificationVisibility)
-                .setOngoing(true)
-                .setSound(null)
-                .setVibrate(new long[]{0L})
-                .build();
-        notification.flags |= Notification.FLAG_NO_CLEAR;
+        instance = this;
+    }
 
-        // Try to start foreground service with proper error handling
+    /**
+     * Attempts to start the service as a foreground service with proper conditions
+     * This method checks if foreground service can be started and handles exceptions gracefully
+     */
+    private void tryStartForegroundService() {
+        if (isForegroundService) {
+            Log.d("OverlayService", "Service is already a foreground service");
+            return;
+        }
+
+        // Check if we can start foreground service
+        if (!canStartForegroundService(this)) {
+            Log.w("OverlayService", "Cannot start foreground service - missing permissions or restrictions");
+            return;
+        }
+
         try {
+            // Create notification channel first
+            createNotificationChannel();
+            
+            // Create notification
+            Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    ? PendingIntent.FLAG_IMMUTABLE
+                    : PendingIntent.FLAG_UPDATE_CURRENT;
+            PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingFlags);
+
+            int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
+            Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
+                    .setContentTitle(WindowSetup.overlayTitle)
+                    .setContentText(WindowSetup.overlayContent)
+                    .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
+                    .setContentIntent(pendingIntent)
+                    .setVisibility(WindowSetup.notificationVisibility)
+                    .setOngoing(true)
+                    .setSound(null)
+                    .setVibrate(new long[]{0L})
+                    .build();
+            notification.flags |= Notification.FLAG_NO_CLEAR;
+
+            // Start foreground service with appropriate type
             if (Build.VERSION.SDK_INT >= 34) {
                 int foregroundType = 0;
                 try {
@@ -903,33 +1010,23 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     foregroundType = 0;
                 }
                 startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
-                isForegroundService = true;
-                Log.d("OverlayService", "Service started as foreground service successfully (API 34+)");
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForeground(OverlayConstants.NOTIFICATION_ID, notification);
-                isForegroundService = true;
-                Log.d("OverlayService", "Service started as foreground service successfully (API 26+)");
-            } else {
-                // For older versions, just start the service normally
-                Log.d("OverlayService", "Starting service normally for older Android version");
             }
+            
+            isForegroundService = true;
+            Log.d("OverlayService", "Service successfully started as foreground service");
+            
         } catch (SecurityException e) {
             Log.w("OverlayService", "SecurityException when starting foreground service: " + e.getMessage());
-            // Continue without foreground service - the overlay will still work
-            // but might be killed by the system more easily
             isForegroundService = false;
         } catch (IllegalStateException e) {
             Log.w("OverlayService", "IllegalStateException when starting foreground service: " + e.getMessage());
-            // This usually means the service context doesn't allow foreground service
-            // Continue without foreground service
             isForegroundService = false;
         } catch (Exception e) {
             Log.e("OverlayService", "Unexpected error starting foreground service: " + e.getMessage());
-            // Continue without foreground service
             isForegroundService = false;
         }
-
-        instance = this;
     }
 
     /**
@@ -942,50 +1039,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             return;
         }
 
-        try {
-            // Create notification if not already created
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                createNotificationChannel();
-                Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
-                int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                        ? PendingIntent.FLAG_IMMUTABLE
-                        : PendingIntent.FLAG_UPDATE_CURRENT;
-                PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingFlags);
-
-                int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
-                Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
-                        .setContentTitle(WindowSetup.overlayTitle)
-                        .setContentText(WindowSetup.overlayContent)
-                        .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
-                        .setContentIntent(pendingIntent)
-                        .setVisibility(WindowSetup.notificationVisibility)
-                        .setOngoing(true)
-                        .setSound(null)
-                        .setVibrate(new long[]{0L})
-                        .build();
-                notification.flags |= Notification.FLAG_NO_CLEAR;
-
-                if (Build.VERSION.SDK_INT >= 34) {
-                    int foregroundType = 0;
-                    try {
-                        foregroundType = (int) ServiceInfo.class
-                                .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
-                    } catch (Exception e) {
-                        Log.w("OverlayService", "Could not get FOREGROUND_SERVICE_TYPE_SPECIAL_USE, using 0: " + e.getMessage());
-                        foregroundType = 0;
-                    }
-                    startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
-                } else {
-                    startForeground(OverlayConstants.NOTIFICATION_ID, notification);
-                }
-                
-                isForegroundService = true;
-                Log.d("OverlayService", "Service successfully promoted to foreground service");
-            }
-        } catch (Exception e) {
-            Log.w("OverlayService", "Failed to promote service to foreground: " + e.getMessage());
-            // Continue without foreground service
-        }
+        tryStartForegroundService();
     }
 
     /**
@@ -994,18 +1048,43 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     public static boolean canStartForegroundService(Context context) {
         try {
-            // Try to create a test notification to see if we can start foreground
+            // Check if we have the required permissions
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                boolean hasForegroundServicePermission = context.checkSelfPermission(android.Manifest.permission.FOREGROUND_SERVICE) == 
+                       android.content.pm.PackageManager.PERMISSION_GRANTED;
+                
+                if (!hasForegroundServicePermission) {
+                    Log.w("OverlayService", "Missing FOREGROUND_SERVICE permission");
+                    return false;
+                }
+            }
+
+            // For Android 12+ (API 31+), check for special use permission
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                boolean hasSpecialUsePermission = context.checkSelfPermission(android.Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE) == 
+                       android.content.pm.PackageManager.PERMISSION_GRANTED;
+                
+                if (!hasSpecialUsePermission) {
+                    Log.w("OverlayService", "Missing FOREGROUND_SERVICE_SPECIAL_USE permission for Android 12+");
+                    return false;
+                }
+            }
+
+            // Check if notification manager is available
             NotificationManager notificationManager = (NotificationManager) 
                 context.getSystemService(Context.NOTIFICATION_SERVICE);
             
             if (notificationManager == null) {
+                Log.w("OverlayService", "NotificationManager is not available");
                 return false;
             }
 
-            // Check if we have the required permissions
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                return context.checkSelfPermission(android.Manifest.permission.FOREGROUND_SERVICE) == 
-                       android.content.pm.PackageManager.PERMISSION_GRANTED;
+            // For Android 12+, check if notifications are enabled
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                if (!notificationManager.areNotificationsEnabled()) {
+                    Log.w("OverlayService", "Notifications are not enabled");
+                    return false;
+                }
             }
             
             return true;
@@ -1170,21 +1249,23 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
     private void bringOverlayToFront() {
-        if (flutterView != null && flutterView.getParent() != null) {
-            try {
-                windowManager.removeView(flutterView);
-
-                WindowManager.LayoutParams layoutParams = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-
-                windowManager.addView(flutterView, layoutParams);
-
-                Log.d("OverlayService", "Overlay trazido para frente com sucesso.");
-            } catch (Exception e) {
-                Log.e("OverlayService", "Erro ao trazer overlay para frente: " + e.getMessage());
+        safeSurfaceOperation(() -> {
+            if (flutterView != null && flutterView.getParent() != null && windowManager != null) {
+                try {
+                    WindowManager.LayoutParams layoutParams = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+                    
+                    // Remove and re-add view to bring to front
+                    windowManager.removeView(flutterView);
+                    windowManager.addView(flutterView, layoutParams);
+                    
+                    Log.d("OverlayService", "Overlay trazido para frente com sucesso.");
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Erro ao trazer overlay para frente: " + e.getMessage());
+                }
+            } else {
+                Log.w("OverlayService", "FlutterView não está anexado ao WindowManager.");
             }
-        } else {
-            Log.w("OverlayService", "FlutterView não está anexado ao WindowManager.");
-        }
+        }, "bringOverlayToFront");
     }
 
 }
