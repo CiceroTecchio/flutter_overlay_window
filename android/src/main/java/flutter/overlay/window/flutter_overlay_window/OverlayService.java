@@ -1190,18 +1190,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     }
                     lastX = event.getRawX();
                     lastY = event.getRawY();
-                    boolean invertX = WindowSetup.gravity == (Gravity.TOP | Gravity.RIGHT)
-                            || WindowSetup.gravity == (Gravity.CENTER | Gravity.RIGHT)
-                            || WindowSetup.gravity == (Gravity.BOTTOM | Gravity.RIGHT);
-                    boolean invertY = WindowSetup.gravity == (Gravity.BOTTOM | Gravity.LEFT)
-                            || WindowSetup.gravity == Gravity.BOTTOM
-                            || WindowSetup.gravity == (Gravity.BOTTOM | Gravity.RIGHT);
-                    int xx = params.x + ((int) dx * (invertX ? -1 : 1));
-                    int yy = params.y + ((int) dy * (invertY ? -1 : 1));
+                    // For absolute positioning with TOP|LEFT gravity, no inversion is needed
+                    // The movement should be direct: drag left = move left, drag right = move right
+                    int xx = params.x + (int) dx;
+                    int yy = params.y + (int) dy;
                     params.x = xx;
                     params.y = yy;
                     if (windowManager != null) {
                         windowManager.updateViewLayout(flutterView, params);
+                        Log.d("OverlayService", "Drag: dx=" + dx + ", dy=" + dy + ", new pos=" + xx + "," + yy);
                     }
                     dragging = true;
                     break;
