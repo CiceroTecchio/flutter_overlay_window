@@ -1198,48 +1198,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     }
                     lastX = event.getRawX();
                     lastY = event.getRawY();
-                    // Convert to screen coordinates for consistent dragging behavior
-                    int screenX, screenY;
-                    int xx, yy;
-                    
-                    if ((params.gravity & Gravity.RIGHT) != 0) {
-                        // For RIGHT gravity, convert to screen coordinates
-                        screenX = szWindow.x - params.x - flutterView.getWidth();
-                    } else {
-                        // For LEFT gravity, x is already in screen coordinates
-                        screenX = params.x;
-                    }
-                    
-                    if ((params.gravity & Gravity.BOTTOM) != 0) {
-                        // For BOTTOM gravity, convert to screen coordinates
-                        screenY = szWindow.y - params.y - flutterView.getHeight();
-                    } else {
-                        // For TOP gravity, y is already in screen coordinates
-                        screenY = params.y;
-                    }
-                    
-                    // Apply movement in screen coordinates
-                    screenX += (int) dx;
-                    screenY += (int) dy;
-                    
-                    // Convert back to gravity-specific coordinates
-                    if ((params.gravity & Gravity.RIGHT) != 0) {
-                        xx = szWindow.x - screenX - flutterView.getWidth();
-                    } else {
-                        xx = screenX;
-                    }
-                    
-                    if ((params.gravity & Gravity.BOTTOM) != 0) {
-                        yy = szWindow.y - screenY - flutterView.getHeight();
-                    } else {
-                        yy = screenY;
-                    }
+                    // Simple approach: always move in the same direction as finger movement
+                    // This should work regardless of gravity for intuitive dragging
+                    int xx = params.x + (int) dx;
+                    int yy = params.y + (int) dy;
                     params.x = xx;
                     params.y = yy;
                     if (windowManager != null) {
                         windowManager.updateViewLayout(flutterView, params);
                         Log.d("OverlayService", "Drag: dx=" + dx + ", dy=" + dy + ", gravity=" + params.gravity + 
-                              ", screenX=" + screenX + ", screenY=" + screenY + ", new pos=" + xx + "," + yy);
+                              ", new pos=" + xx + "," + yy);
                     }
                     dragging = true;
                     break;
