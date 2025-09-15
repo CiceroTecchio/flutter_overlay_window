@@ -575,8 +575,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 // Disable Impeller renderer to prevent surface crashes
                 // This is a safety measure for overlay windows
                 System.setProperty("flutter.impeller.enabled", "false");
+                System.setProperty("flutter.enable-impeller", "false");
                 
-                flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
+                // Create FlutterTextureView with additional safety
+                FlutterTextureView textureView = new FlutterTextureView(getApplicationContext());
+                flutterView = new FlutterView(getApplicationContext(), textureView);
                 
                 // Add surface error listener to catch surface-related crashes
                 flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
@@ -1182,7 +1185,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     @Override
     public boolean onTouch(View view, MotionEvent event) {
-        if (windowManager != null && WindowSetup.enableDrag && flutterView != null) {
+        if (windowManager != null && WindowSetup.enableDrag && flutterView != null && isSurfaceSafe()) {
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
@@ -1214,7 +1217,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     params.x = xx;
                     params.y = yy;
                     if (windowManager != null) {
-                        windowManager.updateViewLayout(flutterView, params);
+                        try {
+                            windowManager.updateViewLayout(flutterView, params);
+                        } catch (Exception e) {
+                            Log.e("OverlayService", "Error updating view layout during drag: " + e.getMessage());
+                            // Mark surface as invalid if update fails
+                            isSurfaceValid.set(false);
+                        }
                     }
                     dragging = true;
                     break;
