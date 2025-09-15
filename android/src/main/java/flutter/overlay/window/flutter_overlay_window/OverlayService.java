@@ -1200,6 +1200,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     lastY = event.getRawY();
                     // Convert to screen coordinates for consistent dragging behavior
                     int screenX, screenY;
+                    int xx, yy;
                     
                     if ((params.gravity & Gravity.RIGHT) != 0) {
                         // For RIGHT gravity, convert to screen coordinates
