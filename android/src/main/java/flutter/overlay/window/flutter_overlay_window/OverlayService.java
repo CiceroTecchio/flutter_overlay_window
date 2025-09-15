@@ -85,7 +85,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
     
     // Flag to track if foreground service was successfully started
     private boolean isForegroundService = false;
-    private boolean wasStartedExternally = false;
 
     // Critical safety flags to prevent segfaults
     private final AtomicBoolean isDestroyed = new AtomicBoolean(false);
@@ -458,12 +457,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         mResources = getApplicationContext().getResources();
 
-        // Mark that service was started externally (via startForegroundService)
-        wasStartedExternally = true;
-        
         // Try to start as foreground service if not already started
+        // Force start when called from onStartCommand to avoid timeout
         if (!isForegroundService) {
-            tryStartForegroundService();
+            tryStartForegroundService(true);
         }
 
         initOverlay(intent);
@@ -1010,17 +1007,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
      * This method checks if foreground service can be started and handles exceptions gracefully
      */
     private void tryStartForegroundService() {
+        tryStartForegroundService(false);
+    }
+    
+    private void tryStartForegroundService(boolean forceStart) {
         if (isForegroundService) {
             Log.d("OverlayService", "Service is already a foreground service");
             return;
         }
 
         // Check if we can start foreground service
-        // If service was started externally, we MUST call startForeground to avoid timeout
-        if (wasStartedExternally) {
-            Log.d("OverlayService", "Service started externally - must call startForeground to avoid timeout");
+        // If forceStart is true, we MUST call startForeground to avoid timeout
+        if (forceStart) {
+            Log.d("OverlayService", "Force starting foreground service to avoid timeout");
             // Force foreground service start even if permissions are questionable
-        } else if (!canStartForegroundService(this)) {
+        } else if (!canStartForegroundService(this, forceStart)) {
             Log.w("OverlayService", "Cannot start foreground service - missing permissions or restrictions");
             return;
         }
@@ -1100,7 +1101,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
      * Checks if the current context allows starting foreground services
      * @return true if foreground service is allowed, false otherwise
      */
-    public boolean canStartForegroundService(Context context) {
+    public static boolean canStartForegroundService(Context context) {
+        return canStartForegroundService(context, false);
+    }
+    
+    public static boolean canStartForegroundService(Context context, boolean forceStart) {
         try {
             // For Android 12+ (API 31+), be more conservative about starting foreground services
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -1136,9 +1141,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
             
             // For Android 12+, be more conservative - only allow if we're sure it will work
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (wasStartedExternally) {
-                    Log.d("OverlayService", "Android 12+ detected but service started externally - allowing foreground service to avoid timeout");
-                    return true; // Allow if started externally to avoid timeout
+                if (forceStart) {
+                    Log.d("OverlayService", "Android 12+ detected but force start requested - allowing foreground service to avoid timeout");
+                    return true; // Allow if force start to avoid timeout
                 } else {
                     Log.d("OverlayService", "Android 12+ detected - being conservative about foreground service start");
                     return false; // Conservative approach - don't start foreground service on Android 12+
