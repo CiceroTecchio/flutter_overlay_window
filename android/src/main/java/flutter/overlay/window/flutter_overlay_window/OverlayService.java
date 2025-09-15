@@ -1065,12 +1065,12 @@ public class OverlayService extends Service implements View.OnTouchListener {
         } catch (IllegalStateException e) {
             Log.w("OverlayService", "IllegalStateException when starting foreground service: " + e.getMessage());
             isForegroundService = false;
-        } catch (android.app.ForegroundServiceStartNotAllowedException e) {
-            Log.w("OverlayService", "ForegroundServiceStartNotAllowedException: " + e.getMessage());
-            isForegroundService = false;
-            // Don't rethrow - continue without foreground service
         } catch (Exception e) {
-            Log.e("OverlayService", "Unexpected error starting foreground service: " + e.getMessage());
+            if (e instanceof android.app.ForegroundServiceStartNotAllowedException) {
+                Log.w("OverlayService", "ForegroundServiceStartNotAllowedException: " + e.getMessage());
+            } else {
+                Log.e("OverlayService", "Unexpected error starting foreground service: " + e.getMessage());
+            }
             isForegroundService = false;
         }
     }
