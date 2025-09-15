@@ -993,7 +993,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
 
         // Try to start as foreground service with proper error handling
-        tryStartForegroundService();
+        // Only attempt if we haven't already started as foreground service
+        if (!isForegroundService) {
+            tryStartForegroundService();
+        }
 
         instance = this;
     }
@@ -1062,6 +1065,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
         } catch (IllegalStateException e) {
             Log.w("OverlayService", "IllegalStateException when starting foreground service: " + e.getMessage());
             isForegroundService = false;
+        } catch (android.app.ForegroundServiceStartNotAllowedException e) {
+            Log.w("OverlayService", "ForegroundServiceStartNotAllowedException: " + e.getMessage());
+            isForegroundService = false;
+            // Don't rethrow - continue without foreground service
         } catch (Exception e) {
             Log.e("OverlayService", "Unexpected error starting foreground service: " + e.getMessage());
             isForegroundService = false;
@@ -1087,24 +1094,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     public static boolean canStartForegroundService(Context context) {
         try {
-            // Check if we have the required permissions
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // For Android 12+ (API 31+), be more conservative about starting foreground services
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Check if we have the required permissions
                 boolean hasForegroundServicePermission = context.checkSelfPermission(android.Manifest.permission.FOREGROUND_SERVICE) == 
                        android.content.pm.PackageManager.PERMISSION_GRANTED;
                 
-                if (!hasForegroundServicePermission) {
-                    Log.w("OverlayService", "Missing FOREGROUND_SERVICE permission");
-                    return false;
-                }
-            }
-
-            // For Android 12+ (API 31+), check for special use permission
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 boolean hasSpecialUsePermission = context.checkSelfPermission(android.Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE) == 
                        android.content.pm.PackageManager.PERMISSION_GRANTED;
                 
-                if (!hasSpecialUsePermission) {
-                    Log.w("OverlayService", "Missing FOREGROUND_SERVICE_SPECIAL_USE permission for Android 12+");
+                if (!hasForegroundServicePermission || !hasSpecialUsePermission) {
+                    Log.w("OverlayService", "Missing required foreground service permissions for Android 12+");
                     return false;
                 }
             }
@@ -1124,6 +1124,12 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     Log.w("OverlayService", "Notifications are not enabled");
                     return false;
                 }
+            }
+            
+            // For Android 12+, be more conservative - only allow if we're sure it will work
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Log.d("OverlayService", "Android 12+ detected - being conservative about foreground service start");
+                return false; // Conservative approach - don't start foreground service on Android 12+
             }
             
             return true;
