@@ -1215,8 +1215,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     params.y = yy;
                     if (windowManager != null) {
                         windowManager.updateViewLayout(flutterView, params);
-                        Log.d("OverlayService", "Drag: dx=" + dx + ", dy=" + dy + ", gravity=" + params.gravity + 
-                              ", new pos=" + xx + "," + yy);
                     }
                     dragging = true;
                     break;
