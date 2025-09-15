@@ -429,11 +429,23 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
             int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
             int startY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
-            int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : startX;
-            int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : startY;
-            moveOverlayInternal(dx, dy, null);
+            
+            // Convert to pixels for proper positioning
+            int newX = startX == OverlayConstants.DEFAULT_XY ? 0 : dpToPx(startX);
+            int newY = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : dpToPx(startY);
+            
+            // Update gravity for absolute positioning if specific coordinates are provided
+            boolean hasSpecificPosition = (startX != OverlayConstants.DEFAULT_XY || startY != OverlayConstants.DEFAULT_XY);
+            if (hasSpecificPosition && windowManager != null && flutterView != null) {
+                WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+                params.gravity = Gravity.TOP | Gravity.LEFT;
+                windowManager.updateViewLayout(flutterView, params);
+                Log.d("OverlayService", "Updated gravity to TOP|LEFT for absolute positioning");
+            }
+            
+            moveOverlayInternal(newX, newY, null);
             bringOverlayToFront();
-            Log.d("OverlayService", "Overlay já ativo, trazido para frente.");
+            Log.d("OverlayService", "Overlay já ativo, reposicionado para: " + newX + "," + newY);
             return START_STICKY;
         }
 
@@ -645,16 +657,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
             int width = intent.getIntExtra("width", WindowSetup.width);
             int height = intent.getIntExtra("height", screenHeight());
-            int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : startX;
-            int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : startY;
+            
+            // Calculate initial position properly
+            int initialX = startX == OverlayConstants.DEFAULT_XY ? 0 : dpToPx(startX);
+            int initialY = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : dpToPx(startY);
+            
             int layoutWidth = (width == -1999 || width == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(width);
             int layoutHeight = (height == -1999 || height == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(height);
 
             WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                     layoutWidth,
                     layoutHeight,
-                    0,
-                    -statusBarHeightPx(),
+                    initialX,  // Set initial X position
+                    initialY,  // Set initial Y position
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                             ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                             : WindowManager.LayoutParams.TYPE_PHONE,
@@ -669,7 +684,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
                 params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
             }
-            params.gravity = WindowSetup.gravity;
+            
+            // Determine gravity based on whether we have specific positions
+            boolean hasSpecificPosition = (startX != OverlayConstants.DEFAULT_XY || startY != OverlayConstants.DEFAULT_XY);
+            
+            if (hasSpecificPosition) {
+                // Use TOP|LEFT gravity for absolute positioning when specific coordinates are provided
+                params.gravity = Gravity.TOP | Gravity.LEFT;
+                Log.d("OverlayService", "Using absolute positioning with TOP|LEFT gravity");
+            } else {
+                // Use WindowSetup gravity for default positioning
+                params.gravity = WindowSetup.gravity;
+                Log.d("OverlayService", "Using WindowSetup gravity: " + WindowSetup.gravity);
+            }
 
             // Add view with proper error handling
             try {
@@ -678,8 +705,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     try {
                         if (windowManager != null && flutterView != null && isRunning) {
                             windowManager.addView(flutterView, params);
-                            moveOverlayInternal(dx, dy, null);
-                            Log.d("OverlayService", "Overlay view added successfully");
+                            Log.d("OverlayService", "Overlay view added successfully at position: " + initialX + "," + initialY + " with gravity: " + params.gravity);
                         }
                     } catch (Exception e) {
                         Log.e("OverlayService", "Failed to add overlay view: " + e.getMessage());
@@ -844,8 +870,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
             instance.safeSurfaceOperation(() -> {
                 if (instance.flutterView != null && instance.windowManager != null) {
                     WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
-                    params.x = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
-                    params.y = instance.dpToPx(y);
+                    // x and y are already in pixels when called from initOverlay
+                    params.x = (x == -1999 || x == -1) ? -1 : x;
+                    params.y = y;
                     instance.windowManager.updateViewLayout(instance.flutterView, params);
                     Log.d("OverlayService", "Overlay moved to: " + params.x + "," + params.y);
                     if (result != null) result.success(true);
@@ -877,6 +904,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 params.x = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
                 params.y = instance.dpToPx(y);
                 instance.windowManager.updateViewLayout(instance.flutterView, params);
+                Log.d("OverlayService", "Overlay moved to dp position: " + x + "," + y + " (pixels: " + params.x + "," + params.y + ")");
                 return true;
             } else {
                 return false;
