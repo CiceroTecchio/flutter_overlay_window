@@ -1198,15 +1198,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     }
                     lastX = event.getRawX();
                     lastY = event.getRawY();
-                    // For absolute positioning with TOP|LEFT gravity, no inversion is needed
-                    // The movement should be direct: drag left = move left, drag right = move right
+                    // Simple and intuitive drag: always move in the same direction as finger movement
+                    // Gravity only affects initial positioning, not drag behavior
                     int xx = params.x + (int) dx;
                     int yy = params.y + (int) dy;
                     params.x = xx;
                     params.y = yy;
                     if (windowManager != null) {
                         windowManager.updateViewLayout(flutterView, params);
-                        Log.d("OverlayService", "Drag: dx=" + dx + ", dy=" + dy + ", new pos=" + xx + "," + yy);
+                        Log.d("OverlayService", "Drag: dx=" + dx + ", dy=" + dy + ", gravity=" + params.gravity + 
+                              ", new pos=" + xx + "," + yy);
                     }
                     dragging = true;
                     break;
