@@ -415,24 +415,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
             if (engine == null || !isEngineValid(engine)) {
                 Log.w("OverlayService", "Engine lost or invalid, attempting to recreate");
                 
-                // Try to get existing engine group first
-                FlutterEngineGroup engineGroup = null;
-                try {
-                    // Try to get from existing engines
-                    FlutterEngine existingEngine = FlutterEngineCache.getInstance().get("default");
-                    if (existingEngine != null) {
-                        engineGroup = existingEngine.getEngineGroup();
-                        Log.d("OverlayService", "Using existing engine group");
-                    }
-                } catch (Exception e) {
-                    Log.w("OverlayService", "Could not get existing engine group: " + e.getMessage());
-                }
-                
-                // Create new engine group if needed
-                if (engineGroup == null) {
-                    engineGroup = new FlutterEngineGroup(this);
-                    Log.d("OverlayService", "Created new engine group");
-                }
+                // Create new engine group
+                FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
+                Log.d("OverlayService", "Created new engine group");
                 
                 // Create entry point
                 DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
