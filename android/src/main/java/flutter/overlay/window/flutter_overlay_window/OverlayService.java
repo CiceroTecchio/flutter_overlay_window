@@ -267,12 +267,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
      * Safe engine validation to prevent segfaults
      */
     private boolean isEngineValid(FlutterEngine engine) {
-        if (engine == null) return false;
+        if (engine == null) {
+            Log.w("OverlayService", "Engine is null");
+            return false;
+        }
         
         try {
             // Check if engine is not destroyed
             if (engine.getDartExecutor() == null) {
                 Log.w("OverlayService", "Engine DartExecutor is null");
+                return false;
+            }
+            
+            // Check if DartExecutor is executing (this means engine is busy)
+            if (engine.getDartExecutor().isExecutingDart()) {
+                Log.w("OverlayService", "Engine DartExecutor is executing Dart code");
                 return false;
             }
             
@@ -282,6 +291,18 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 return false;
             }
             
+            // Additional check: try to access renderer
+            try {
+                if (engine.getRenderer() == null) {
+                    Log.w("OverlayService", "Engine Renderer is null");
+                    return false;
+                }
+            } catch (Exception e) {
+                Log.w("OverlayService", "Engine Renderer not accessible: " + e.getMessage());
+                return false;
+            }
+            
+            Log.d("OverlayService", "Engine validation passed");
             return true;
         } catch (Exception e) {
             Log.e("OverlayService", "Error validating engine: " + e.getMessage());
@@ -306,19 +327,25 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     return null;
                 }
                 
+                // Try to get engine from cache
                 FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
                 if (engine != null && isEngineValid(engine)) {
-                    // Additional check to ensure engine is not being destroyed
-                    if (engine.getDartExecutor() != null && !engine.getDartExecutor().isExecutingDart()) {
-                        return engine;
-                    } else {
-                        Log.w("OverlayService", "Engine DartExecutor is not available or executing");
-                        return null;
-                    }
-                } else {
-                    Log.w("OverlayService", "Engine not found in cache or invalid");
-                    return null;
+                    Log.d("OverlayService", "Found valid engine in cache");
+                    return engine;
                 }
+                
+                // Try to get default engine as fallback
+                Log.w("OverlayService", "Overlay engine not found, trying default engine");
+                FlutterEngine defaultEngine = FlutterEngineCache.getInstance().get("default");
+                if (defaultEngine != null && isEngineValid(defaultEngine)) {
+                    Log.d("OverlayService", "Using default engine as fallback");
+                    // Cache the default engine for overlay use
+                    FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, defaultEngine);
+                    return defaultEngine;
+                }
+                
+                Log.w("OverlayService", "No valid engine found in cache");
+                return null;
             } catch (Exception e) {
                 Log.e("OverlayService", "Error accessing engine: " + e.getMessage());
                 return null;
@@ -388,20 +415,49 @@ public class OverlayService extends Service implements View.OnTouchListener {
             if (engine == null || !isEngineValid(engine)) {
                 Log.w("OverlayService", "Engine lost or invalid, attempting to recreate");
                 
-                FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
+                // Try to get existing engine group first
+                FlutterEngineGroup engineGroup = null;
+                try {
+                    // Try to get from existing engines
+                    FlutterEngine existingEngine = FlutterEngineCache.getInstance().get("default");
+                    if (existingEngine != null) {
+                        engineGroup = existingEngine.getEngineGroup();
+                        Log.d("OverlayService", "Using existing engine group");
+                    }
+                } catch (Exception e) {
+                    Log.w("OverlayService", "Could not get existing engine group: " + e.getMessage());
+                }
+                
+                // Create new engine group if needed
+                if (engineGroup == null) {
+                    engineGroup = new FlutterEngineGroup(this);
+                    Log.d("OverlayService", "Created new engine group");
+                }
+                
+                // Create entry point
                 DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
                         FlutterInjector.instance().flutterLoader().findAppBundlePath(),
                         "overlayMain");
 
+                // Create and run engine
                 FlutterEngine newEngine = engineGroup.createAndRunEngine(this, entryPoint);
+                
+                // Wait a bit for engine to initialize
+                Thread.sleep(100);
+                
+                // Cache the engine
                 FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, newEngine);
                 
-                Log.d("OverlayService", "New FlutterEngine created and cached");
+                // Mark as valid
+                isEngineValid.set(true);
+                
+                Log.d("OverlayService", "New FlutterEngine created and cached successfully");
                 return true;
             }
             return false;
         } catch (Exception e) {
             Log.e("OverlayService", "Failed to recreate engine: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
