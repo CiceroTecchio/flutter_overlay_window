@@ -53,13 +53,6 @@ import io.flutter.plugin.common.MethodChannel;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-// Sentry imports for crash monitoring
-import io.sentry.Sentry;
-import io.sentry.SentryLevel;
-import io.sentry.Breadcrumb;
-import io.sentry.SentryOptions;
-import io.sentry.android.core.SentryAndroid;
-
 public class OverlayService extends Service implements View.OnTouchListener {
     private final int DEFAULT_NAV_BAR_HEIGHT_DP = 48;
     private final int DEFAULT_STATUS_BAR_HEIGHT_DP = 25;
@@ -577,52 +570,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
-    /**
-     * Logs detailed information to Sentry for debugging overlay crashes
-     * Only sends to Sentry on ERROR level (exceptions/crashes)
-     */
-    private void logToSentry(String message, SentryLevel level, String category) {
-        try {
-            // Only send to Sentry on ERROR level (crashes/exceptions)
-            if (level == SentryLevel.ERROR) {
-                // Add breadcrumb for context when there's an error
-                Breadcrumb breadcrumb = new Breadcrumb();
-                breadcrumb.setMessage(message);
-                breadcrumb.setCategory(category);
-                breadcrumb.setLevel(level);
-                breadcrumb.setData("timestamp", System.currentTimeMillis());
-                breadcrumb.setData("service_state", getServiceState());
-                Sentry.addBreadcrumb(breadcrumb);
-                
-                Sentry.captureMessage(message, level);
-            }
-        } catch (Exception e) {
-            Log.e("OverlayService", "Error logging to Sentry: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Captures exception to Sentry with overlay context
-     */
-    private void captureExceptionToSentry(Exception exception, String context) {
-        try {
-            Sentry.withScope(scope -> {
-                scope.setTag("overlay_service", "true");
-                scope.setTag("service_state", getServiceState());
-                scope.setTag("engine_valid", String.valueOf(isEngineValid.get()));
-                scope.setTag("surface_valid", String.valueOf(isSurfaceValid.get()));
-                scope.setTag("engine_isolated", String.valueOf(isEngineIsolated.get()));
-                scope.setTag("engine_destroyed", String.valueOf(isEngineDestroyed));
-                scope.setContext("overlay_context", context);
-                scope.setContext("flutter_view", flutterView != null ? "attached" : "null");
-                scope.setContext("window_manager", windowManager != null ? "available" : "null");
-                
-                Sentry.captureException(exception);
-            });
-        } catch (Exception e) {
-            Log.e("OverlayService", "Error capturing exception to Sentry: " + e.getMessage());
-        }
-    }
 
     /**
      * Gets current service state for debugging
@@ -654,36 +601,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     /**
-     * Logs overlay operation failure to Sentry (sends to Sentry)
+     * Logs overlay operation failure (local logging only)
      */
     private void logOperationFailure(String operation, Exception exception) {
-        logToSentry("Failed overlay operation: " + operation + " - " + exception.getMessage(), SentryLevel.ERROR, "overlay_operation");
-        captureExceptionToSentry(exception, "Operation: " + operation);
+        Log.e("OverlayService", "Failed overlay operation: " + operation + " - " + exception.getMessage());
+        Log.e("OverlayService", "Service state: " + getServiceState());
+        exception.printStackTrace();
     }
 
-    /**
-     * Configures Sentry specifically for overlay service debugging
-     */
-    private void configureSentryForOverlay() {
-        try {
-            // Set overlay-specific tags
-            Sentry.setTag("overlay_service", "true");
-            Sentry.setTag("service_type", "flutter_overlay_window");
-            
-            // Set initial context
-            Sentry.setContext("overlay_service_info", Map.of(
-                "service_created", System.currentTimeMillis(),
-                "android_version", Build.VERSION.RELEASE,
-                "sdk_version", Build.VERSION.SDK_INT
-            ));
-            
-            // Log service creation locally
-            Log.d("OverlayService", "OverlayService created and Sentry configured");
-            
-        } catch (Exception e) {
-            Log.e("OverlayService", "Error configuring Sentry: " + e.getMessage());
-        }
-    }
 
     @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
@@ -1435,9 +1360,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public void onCreate() { // Get the cached FlutterEngine
         // Initialize resources early to prevent null pointer exceptions
         mResources = getApplicationContext().getResources();
-        
-        // Configure Sentry for overlay service debugging
-        configureSentryForOverlay();
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_USER_PRESENT);
