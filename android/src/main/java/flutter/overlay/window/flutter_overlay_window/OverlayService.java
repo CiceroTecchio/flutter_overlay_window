@@ -388,13 +388,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
             
             try {
-                // Check if FlutterView is properly attached
-                if (flutterView.getParent() == null) {
-                    Log.w("OverlayService", "FlutterView not attached to parent");
-                    return false;
-                }
-                
-                // Check if the view is visible and has valid dimensions
+                // For overlay creation, we don't need to check if FlutterView is attached to parent
+                // because we're about to attach it to WindowManager
+                // Just check if the view exists and is valid
                 if (flutterView.getWidth() <= 0 || flutterView.getHeight() <= 0) {
                     Log.w("OverlayService", "FlutterView has invalid dimensions: " + 
                           flutterView.getWidth() + "x" + flutterView.getHeight());
@@ -1182,8 +1178,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 // Add a small delay to let the FlutterView settle before adding to window manager
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
                     try {
-                        if (windowManager != null && flutterView != null && isRunning && isSurfaceSafe()) {
-                            // Final safety check before adding to window manager
+                        if (windowManager != null && flutterView != null && isRunning) {
+                            // Check if FlutterView is not already attached to WindowManager
                             if (flutterView.getParent() == null) {
                                 windowManager.addView(flutterView, params);
                                 Log.d("OverlayService", "Overlay view added successfully at position: " + initialX + "," + initialY + " with gravity: " + params.gravity);
