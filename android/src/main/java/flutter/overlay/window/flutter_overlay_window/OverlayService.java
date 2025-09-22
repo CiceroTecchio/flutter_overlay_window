@@ -280,9 +280,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
             
             // Check if DartExecutor is executing (this means engine is busy)
+            // But allow it for overlay use as it might be normal
             if (engine.getDartExecutor().isExecutingDart()) {
-                Log.w("OverlayService", "Engine DartExecutor is executing Dart code");
-                return false;
+                Log.w("OverlayService", "Engine DartExecutor is executing Dart code - allowing for overlay use");
+                // Don't return false here, allow the engine to be used
             }
             
             // Check if lifecycle channel is available
@@ -329,19 +330,39 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 
                 // Try to get engine from cache
                 FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-                if (engine != null && isEngineValid(engine)) {
-                    Log.d("OverlayService", "Found valid engine in cache");
-                    return engine;
+                if (engine != null) {
+                    // Check if engine is valid, but be more lenient with executing Dart
+                    if (isEngineValid(engine)) {
+                        Log.d("OverlayService", "Found valid engine in cache");
+                        return engine;
+                    } else {
+                        Log.w("OverlayService", "Cached engine not valid, but trying to use it anyway");
+                        // Try to use the engine even if validation failed
+                        if (engine.getDartExecutor() != null && engine.getLifecycleChannel() != null) {
+                            Log.d("OverlayService", "Using cached engine despite validation issues");
+                            return engine;
+                        }
+                    }
                 }
                 
                 // Try to get default engine as fallback
                 Log.w("OverlayService", "Overlay engine not found, trying default engine");
                 FlutterEngine defaultEngine = FlutterEngineCache.getInstance().get("default");
-                if (defaultEngine != null && isEngineValid(defaultEngine)) {
-                    Log.d("OverlayService", "Using default engine as fallback");
-                    // Cache the default engine for overlay use
-                    FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, defaultEngine);
-                    return defaultEngine;
+                if (defaultEngine != null) {
+                    if (isEngineValid(defaultEngine)) {
+                        Log.d("OverlayService", "Using default engine as fallback");
+                        // Cache the default engine for overlay use
+                        FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, defaultEngine);
+                        return defaultEngine;
+                    } else {
+                        Log.w("OverlayService", "Default engine not valid, but trying to use it anyway");
+                        // Try to use the default engine even if validation failed
+                        if (defaultEngine.getDartExecutor() != null && defaultEngine.getLifecycleChannel() != null) {
+                            Log.d("OverlayService", "Using default engine despite validation issues");
+                            FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, defaultEngine);
+                            return defaultEngine;
+                        }
+                    }
                 }
                 
                 Log.w("OverlayService", "No valid engine found in cache");
