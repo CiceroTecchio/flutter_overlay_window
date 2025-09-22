@@ -174,16 +174,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             if (Intent.ACTION_SCREEN_OFF.equals(action)) {
-                Log.d("OverlayService", "Screen off detected, isolating engine");
-                isolateEngine();
+                Log.d("OverlayService", "Screen off detected, but keeping overlay functional");
+                // Don't isolate engine for overlay - it needs to stay active
                 handleAppLifecycleChange("paused");
             } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
-                Log.d("OverlayService", "Screen on detected, restoring engine");
-                restoreEngine();
+                Log.d("OverlayService", "Screen on detected, overlay should remain active");
                 handleAppLifecycleChange("resumed");
             } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                Log.d("OverlayService", "User present detected, restoring engine");
-                restoreEngine();
+                Log.d("OverlayService", "User present detected, overlay should remain active");
                 handleAppLifecycleChange("resumed");
             }
         }
@@ -322,10 +320,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
         
         synchronized (engineLock) {
             try {
-                // Don't access engine if it's isolated to prevent Dart VM crashes
+                // Allow access to isolated engine for overlay operations
+                // Overlay needs to work even when screen is off
                 if (isEngineIsolated.get()) {
-                    Log.w("OverlayService", "Engine is isolated, cannot access safely");
-                    return null;
+                    Log.d("OverlayService", "Engine is isolated, but allowing access for overlay operations");
                 }
                 
                 // Try to get engine from cache
@@ -490,42 +488,20 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     private void handleAppLifecycleChange(String state) {
         try {
-            if (isDestroyed.get() || !isEngineValid.get()) {
-                Log.w("OverlayService", "Service destroyed or engine invalid, skipping lifecycle change: " + state);
+            if (isDestroyed.get()) {
+                Log.w("OverlayService", "Service destroyed, skipping lifecycle change: " + state);
                 return;
             }
 
             FlutterEngine engine = getValidEngine();
-            if (engine == null || !isEngineValid(engine)) {
+            if (engine == null) {
                 Log.w("OverlayService", "Engine not available for lifecycle change: " + state);
                 return;
             }
 
-            // Add delay to prevent crashes during rapid lifecycle changes
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                try {
-                    if (engine.getLifecycleChannel() != null) {
-                        switch (state) {
-                            case "foreground":
-                            case "resumed":
-                                engine.getLifecycleChannel().appIsResumed();
-                                Log.d("OverlayService", "App resumed safely");
-                                break;
-                            case "background":
-                            case "paused":
-                                engine.getLifecycleChannel().appIsInactive();
-                                Log.d("OverlayService", "App paused safely");
-                                break;
-                            case "stopped":
-                                engine.getLifecycleChannel().appIsDetached();
-                                Log.d("OverlayService", "App detached safely");
-                                break;
-                        }
-                    }
-                } catch (Exception e) {
-                    Log.e("OverlayService", "Error handling lifecycle change " + state + ": " + e.getMessage());
-                }
-            }, 200); // 200ms delay to prevent rapid transitions
+            // For overlay, we don't need to change engine lifecycle states
+            // Overlay should remain functional regardless of app state
+            Log.d("OverlayService", "Overlay lifecycle change: " + state + " - keeping overlay active");
 
         } catch (Exception e) {
             Log.e("OverlayService", "Error in handleAppLifecycleChange: " + e.getMessage());
