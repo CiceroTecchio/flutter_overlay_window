@@ -945,22 +945,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 
                 // Create FlutterTextureView with additional safety
                 FlutterTextureView textureView = new FlutterTextureView(getApplicationContext());
-                flutterView = new FlutterView(getApplicationContext(), textureView) {
-                    @Override
-                    public void updateSemantics(android.os.Bundle semanticsNode, java.util.List<android.os.Bundle> semanticsNodeChildren) {
-                        // Override to prevent semantics crashes in overlay windows
-                        try {
-                            // Only update semantics if the view is properly attached and safe
-                            if (isSurfaceSafe() && getParent() != null) {
-                                super.updateSemantics(semanticsNode, semanticsNodeChildren);
-                            } else {
-                                Log.d("OverlayService", "Skipping semantics update - surface not safe or view not attached");
-                            }
-                        } catch (Exception e) {
-                            Log.w("OverlayService", "Semantics update failed, skipping: " + e.getMessage());
-                        }
-                    }
-                };
+                flutterView = new FlutterView(getApplicationContext(), textureView);
                 
                 // Add surface error listener to catch surface-related crashes
                 flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
