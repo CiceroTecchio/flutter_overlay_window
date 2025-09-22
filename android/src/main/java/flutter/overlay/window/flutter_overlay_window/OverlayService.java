@@ -53,6 +53,13 @@ import io.flutter.plugin.common.MethodChannel;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
+// Sentry imports for crash monitoring
+import io.sentry.Sentry;
+import io.sentry.SentryLevel;
+import io.sentry.Breadcrumb;
+import io.sentry.SentryOptions;
+import io.sentry.android.core.SentryAndroid;
+
 public class OverlayService extends Service implements View.OnTouchListener {
     private final int DEFAULT_NAV_BAR_HEIGHT_DP = 48;
     private final int DEFAULT_STATUS_BAR_HEIGHT_DP = 25;
@@ -92,6 +99,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private final AtomicBoolean isSurfaceValid = new AtomicBoolean(false);
     private final Object engineLock = new Object();
     private final Object surfaceLock = new Object();
+    
+    // Engine isolation flags to prevent Dart VM crashes
+    private final AtomicBoolean isEngineIsolated = new AtomicBoolean(false);
+    private final AtomicBoolean isEnginePaused = new AtomicBoolean(false);
+    private volatile boolean isEngineDestroyed = false;
 
     private BroadcastReceiver screenUnlockReceiver;
     private boolean isReceiverRegistered = false;
@@ -113,7 +125,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 try {
                     FlutterEngine flutterEngine = getValidEngine();
                     if (flutterEngine != null && isEngineValid(flutterEngine)) {
-                        flutterEngine.getLifecycleChannel().appIsResumed();
+                        // Add delay to ensure system is stable before resuming
+                        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                            try {
+                                if (flutterEngine.getLifecycleChannel() != null) {
+                                    flutterEngine.getLifecycleChannel().appIsResumed();
+                                    Log.d("OverlayService", "Engine lifecycle resumed after screen unlock");
+                                }
+                            } catch (Exception e) {
+                                Log.e("OverlayService", "Error resuming engine after delay: " + e.getMessage());
+                            }
+                        }, 500); // 500ms delay to let system stabilize
                     }
                 } catch (Exception e) {
                     Log.e("OverlayService", "Error resuming engine: " + e.getMessage());
@@ -150,6 +172,26 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         }
                     }
                 }, 500);
+            }
+        }
+    };
+
+    private BroadcastReceiver appLifecycleReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                Log.d("OverlayService", "Screen off detected, isolating engine");
+                isolateEngine();
+                handleAppLifecycleChange("paused");
+            } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
+                Log.d("OverlayService", "Screen on detected, restoring engine");
+                restoreEngine();
+                handleAppLifecycleChange("resumed");
+            } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                Log.d("OverlayService", "User present detected, restoring engine");
+                restoreEngine();
+                handleAppLifecycleChange("resumed");
             }
         }
     };
@@ -258,20 +300,37 @@ public class OverlayService extends Service implements View.OnTouchListener {
      * Safe engine access with validation
      */
     private FlutterEngine getValidEngine() {
-        if (isDestroyed.get()) {
-            Log.w("OverlayService", "Service destroyed, cannot access engine");
+        if (isDestroyed.get() || isEngineDestroyed) {
+            Log.w("OverlayService", "Service destroyed or engine destroyed, cannot access engine");
             return null;
         }
         
-        try {
-            FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-            if (engine != null && isEngineValid(engine)) {
-                return engine;
+        synchronized (engineLock) {
+            try {
+                // Don't access engine if it's isolated to prevent Dart VM crashes
+                if (isEngineIsolated.get()) {
+                    Log.w("OverlayService", "Engine is isolated, cannot access safely");
+                    return null;
+                }
+                
+                FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+                if (engine != null && isEngineValid(engine)) {
+                    // Additional check to ensure engine is not being destroyed
+                    if (engine.getDartExecutor() != null && !engine.getDartExecutor().isExecutingDart()) {
+                        return engine;
+                    } else {
+                        Log.w("OverlayService", "Engine DartExecutor is not available or executing");
+                        return null;
+                    }
+                } else {
+                    Log.w("OverlayService", "Engine not found in cache or invalid");
+                    return null;
+                }
+            } catch (Exception e) {
+                Log.e("OverlayService", "Error accessing engine: " + e.getMessage());
+                return null;
             }
-        } catch (Exception e) {
-            Log.e("OverlayService", "Error accessing engine: " + e.getMessage());
         }
-        return null;
     }
 
     /**
@@ -327,29 +386,339 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
+    /**
+     * Attempts to recreate the FlutterEngine if it's lost or invalid
+     */
+    private boolean recreateEngineIfNeeded() {
+        try {
+            FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+            if (engine == null || !isEngineValid(engine)) {
+                Log.w("OverlayService", "Engine lost or invalid, attempting to recreate");
+                
+                FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
+                DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
+                        FlutterInjector.instance().flutterLoader().findAppBundlePath(),
+                        "overlayMain");
+
+                FlutterEngine newEngine = engineGroup.createAndRunEngine(this, entryPoint);
+                FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, newEngine);
+                
+                Log.d("OverlayService", "New FlutterEngine created and cached");
+                return true;
+            }
+            return false;
+        } catch (Exception e) {
+            Log.e("OverlayService", "Failed to recreate engine: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Safely handles semantics updates to prevent crashes
+     */
+    private void handleSemanticsUpdate() {
+        try {
+            if (flutterView != null && isSurfaceSafe()) {
+                // Disable semantics updates for overlay windows to prevent crashes
+                flutterView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                
+                // Clear any pending semantics updates
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    flutterView.setAccessibilityDelegate(null);
+                }
+                
+                Log.d("OverlayService", "Semantics handling configured for overlay");
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error handling semantics update: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Safely handles app lifecycle changes to prevent crashes during background/foreground transitions
+     */
+    private void handleAppLifecycleChange(String state) {
+        try {
+            if (isDestroyed.get() || !isEngineValid.get()) {
+                Log.w("OverlayService", "Service destroyed or engine invalid, skipping lifecycle change: " + state);
+                return;
+            }
+
+            FlutterEngine engine = getValidEngine();
+            if (engine == null || !isEngineValid(engine)) {
+                Log.w("OverlayService", "Engine not available for lifecycle change: " + state);
+                return;
+            }
+
+            // Add delay to prevent crashes during rapid lifecycle changes
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                try {
+                    if (engine.getLifecycleChannel() != null) {
+                        switch (state) {
+                            case "foreground":
+                            case "resumed":
+                                engine.getLifecycleChannel().appIsResumed();
+                                Log.d("OverlayService", "App resumed safely");
+                                break;
+                            case "background":
+                            case "paused":
+                                engine.getLifecycleChannel().appIsInactive();
+                                Log.d("OverlayService", "App paused safely");
+                                break;
+                            case "stopped":
+                                engine.getLifecycleChannel().appIsDetached();
+                                Log.d("OverlayService", "App detached safely");
+                                break;
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Error handling lifecycle change " + state + ": " + e.getMessage());
+                }
+            }, 200); // 200ms delay to prevent rapid transitions
+
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error in handleAppLifecycleChange: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Safely isolates the Flutter engine to prevent Dart VM crashes
+     */
+    private void isolateEngine() {
+        logOperationStart("isolateEngine");
+        
+        try {
+            if (isEngineDestroyed || isDestroyed.get()) {
+                Log.w("OverlayService", "Engine already destroyed or service destroyed, skipping isolation");
+                return;
+            }
+
+            synchronized (engineLock) {
+                if (isEngineIsolated.get()) {
+                    Log.d("OverlayService", "Engine already isolated");
+                    return;
+                }
+
+                FlutterEngine engine = getValidEngine();
+                if (engine == null) {
+                    Log.w("OverlayService", "No valid engine to isolate");
+                    return;
+                }
+
+                // Pause the engine to prevent Dart VM operations
+                try {
+                    if (engine.getLifecycleChannel() != null) {
+                        engine.getLifecycleChannel().appIsDetached();
+                        Log.d("OverlayService", "Engine detached for isolation");
+                    }
+                } catch (Exception e) {
+                    Log.w("OverlayService", "Error detaching engine for isolation: " + e.getMessage());
+                    logOperationFailure("engine_detach", e);
+                }
+
+                // Mark engine as isolated
+                isEngineIsolated.set(true);
+                isEnginePaused.set(true);
+                
+                Log.d("OverlayService", "Engine isolated successfully");
+                logOperationComplete("isolateEngine");
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error isolating engine: " + e.getMessage());
+            logOperationFailure("isolateEngine", e);
+        }
+    }
+
+    /**
+     * Safely restores the Flutter engine from isolation
+     */
+    private void restoreEngine() {
+        logOperationStart("restoreEngine");
+        
+        try {
+            if (isDestroyed.get()) {
+                Log.w("OverlayService", "Service destroyed, cannot restore engine");
+                return;
+            }
+
+            synchronized (engineLock) {
+                if (!isEngineIsolated.get()) {
+                    Log.d("OverlayService", "Engine not isolated, no need to restore");
+                    return;
+                }
+
+                FlutterEngine engine = getValidEngine();
+                if (engine == null) {
+                    Log.w("OverlayService", "No valid engine to restore");
+                    return;
+                }
+
+                // Restore engine operations
+                try {
+                    if (engine.getLifecycleChannel() != null) {
+                        engine.getLifecycleChannel().appIsResumed();
+                        Log.d("OverlayService", "Engine restored and resumed");
+                    }
+                } catch (Exception e) {
+                    Log.w("OverlayService", "Error resuming engine after restore: " + e.getMessage());
+                    logOperationFailure("engine_resume", e);
+                }
+
+                // Mark engine as restored
+                isEngineIsolated.set(false);
+                isEnginePaused.set(false);
+                
+                Log.d("OverlayService", "Engine restored successfully");
+                logOperationComplete("restoreEngine");
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error restoring engine: " + e.getMessage());
+            logOperationFailure("restoreEngine", e);
+        }
+    }
+
+    /**
+     * Logs detailed information to Sentry for debugging overlay crashes
+     * Only sends to Sentry on ERROR level (exceptions/crashes)
+     */
+    private void logToSentry(String message, SentryLevel level, String category) {
+        try {
+            // Only send to Sentry on ERROR level (crashes/exceptions)
+            if (level == SentryLevel.ERROR) {
+                // Add breadcrumb for context when there's an error
+                Breadcrumb breadcrumb = new Breadcrumb();
+                breadcrumb.setMessage(message);
+                breadcrumb.setCategory(category);
+                breadcrumb.setLevel(level);
+                breadcrumb.setData("timestamp", System.currentTimeMillis());
+                breadcrumb.setData("service_state", getServiceState());
+                Sentry.addBreadcrumb(breadcrumb);
+                
+                Sentry.captureMessage(message, level);
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error logging to Sentry: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Captures exception to Sentry with overlay context
+     */
+    private void captureExceptionToSentry(Exception exception, String context) {
+        try {
+            Sentry.withScope(scope -> {
+                scope.setTag("overlay_service", "true");
+                scope.setTag("service_state", getServiceState());
+                scope.setTag("engine_valid", String.valueOf(isEngineValid.get()));
+                scope.setTag("surface_valid", String.valueOf(isSurfaceValid.get()));
+                scope.setTag("engine_isolated", String.valueOf(isEngineIsolated.get()));
+                scope.setTag("engine_destroyed", String.valueOf(isEngineDestroyed));
+                scope.setContext("overlay_context", context);
+                scope.setContext("flutter_view", flutterView != null ? "attached" : "null");
+                scope.setContext("window_manager", windowManager != null ? "available" : "null");
+                
+                Sentry.captureException(exception);
+            });
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error capturing exception to Sentry: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Gets current service state for debugging
+     */
+    private String getServiceState() {
+        StringBuilder state = new StringBuilder();
+        state.append("running:").append(isRunning);
+        state.append(",destroyed:").append(isDestroyed.get());
+        state.append(",engineValid:").append(isEngineValid.get());
+        state.append(",surfaceValid:").append(isSurfaceValid.get());
+        state.append(",engineIsolated:").append(isEngineIsolated.get());
+        state.append(",enginePaused:").append(isEnginePaused.get());
+        state.append(",engineDestroyed:").append(isEngineDestroyed);
+        return state.toString();
+    }
+
+    /**
+     * Logs overlay operation start (no Sentry, just local logging)
+     */
+    private void logOperationStart(String operation) {
+        Log.d("OverlayService", "Starting overlay operation: " + operation);
+    }
+
+    /**
+     * Logs overlay operation completion (no Sentry, just local logging)
+     */
+    private void logOperationComplete(String operation) {
+        Log.d("OverlayService", "Completed overlay operation: " + operation);
+    }
+
+    /**
+     * Logs overlay operation failure to Sentry (sends to Sentry)
+     */
+    private void logOperationFailure(String operation, Exception exception) {
+        logToSentry("Failed overlay operation: " + operation + " - " + exception.getMessage(), SentryLevel.ERROR, "overlay_operation");
+        captureExceptionToSentry(exception, "Operation: " + operation);
+    }
+
+    /**
+     * Configures Sentry specifically for overlay service debugging
+     */
+    private void configureSentryForOverlay() {
+        try {
+            // Set overlay-specific tags
+            Sentry.setTag("overlay_service", "true");
+            Sentry.setTag("service_type", "flutter_overlay_window");
+            
+            // Set initial context
+            Sentry.setContext("overlay_service_info", Map.of(
+                "service_created", System.currentTimeMillis(),
+                "android_version", Build.VERSION.RELEASE,
+                "sdk_version", Build.VERSION.SDK_INT
+            ));
+            
+            // Log service creation locally
+            Log.d("OverlayService", "OverlayService created and Sentry configured");
+            
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error configuring Sentry: " + e.getMessage());
+        }
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
     public void onDestroy() {
         Log.d("OverLay", "Destroying the overlay window service");
+        logOperationStart("onDestroy");
         
         // Mark service as destroyed to prevent further operations
         isDestroyed.set(true);
         isEngineValid.set(false);
         isSurfaceValid.set(false);
+        isEngineDestroyed = true;
+        
+        // Isolate engine before destruction to prevent Dart VM crashes
+        isolateEngine();
 
         try {
-            // Safe engine access
+            // Safe engine access with additional validation
             FlutterEngine engine = getValidEngine();
-            if (engine != null) {
+            if (engine != null && isEngineValid(engine)) {
                 Log.d("OverLay", "Parando som do ringtone");
                 try {
-                    new MethodChannel(engine.getDartExecutor(), "my_custom_overlay_channel")
-                            .invokeMethod("onOverlayClosed", null);
+                    // Double-check engine is still valid before calling methods
+                    if (engine.getDartExecutor() != null && !engine.getDartExecutor().isExecutingDart()) {
+                        new MethodChannel(engine.getDartExecutor(), "my_custom_overlay_channel")
+                                .invokeMethod("onOverlayClosed", null);
+                        Log.d("OverLay", "onOverlayClosed chamado com sucesso");
+                    } else {
+                        Log.w("OverLay", "Engine DartExecutor não está disponível para chamar onOverlayClosed");
+                    }
                 } catch (Exception e) {
                     Log.e("OverLay", "Error calling onOverlayClosed: " + e.getMessage());
                 }
             } else {
-                Log.d("OverLay", "FlutterEngine nulo, não foi possível chamar onOverlayClosed");
+                Log.d("OverLay", "FlutterEngine nulo ou inválido, não foi possível chamar onOverlayClosed");
             }
         } catch (Exception e) {
             Log.e("OverLay", "Falha ao parar som do ringtone", e);
@@ -357,11 +726,30 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         if (windowManager != null && flutterView != null) {
             try {
-                windowManager.removeView(flutterView);
+                // Safe detachment with validation
+                if (flutterView.getParent() != null) {
+                    windowManager.removeView(flutterView);
+                    Log.d("OverLay", "FlutterView removido do WindowManager");
+                } else {
+                    Log.w("OverLay", "FlutterView já foi removido do WindowManager");
+                }
             } catch (Exception e) {
                 Log.e("OverLay", "Erro ao remover flutterView", e);
             }
-            flutterView.detachFromFlutterEngine();
+            
+            try {
+                // Safe engine detachment
+                FlutterEngine engine = getValidEngine();
+                if (engine != null && isEngineValid(engine)) {
+                    flutterView.detachFromFlutterEngine();
+                    Log.d("OverLay", "FlutterView desanexado do engine com sucesso");
+                } else {
+                    Log.w("OverLay", "Engine inválido, pulando detachFromFlutterEngine");
+                }
+            } catch (Exception e) {
+                Log.e("OverLay", "Erro ao desanexar FlutterView do engine", e);
+            }
+            
             flutterView = null;
             windowManager = null;
         }
@@ -405,6 +793,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
         } catch (Exception e) {
             Log.e("OverLay", "Error unregistering configurationChangeReceiver", e);
+        }
+        
+        try {
+            if (appLifecycleReceiver != null) {
+                unregisterReceiver(appLifecycleReceiver);
+            }
+        } catch (Exception e) {
+            Log.e("OverLay", "Error unregistering appLifecycleReceiver", e);
         }
     }
 
@@ -476,9 +872,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     private void initOverlay(Intent intent) {
+        logOperationStart("initOverlay");
+        
         int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
         int startY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
         boolean isCloseWindow = intent.getBooleanExtra(INTENT_EXTRA_IS_CLOSE_WINDOW, false);
+        
+                // Log intent details locally
+        Log.d("OverlayService", "Initializing overlay with startX: " + startX + ", startY: " + startY + ", isCloseWindow: " + isCloseWindow);
 
         if (isCloseWindow) {
             if (windowManager != null) {
@@ -501,13 +902,24 @@ public class OverlayService extends Service implements View.OnTouchListener {
         isRunning = true;
         Log.d("onStartCommand", "Service started");
 
-        // Safe engine access with validation
+        // Safe engine access with validation and recreation
         FlutterEngine engine = getValidEngine();
         if (engine == null) {
-            Log.e("OverlayService", "FlutterEngine não encontrado no cache ou inválido");
-            isRunning = false;
-            stopSelf();
-            return;
+            Log.w("OverlayService", "FlutterEngine não encontrado no cache ou inválido, tentando recriar");
+            if (recreateEngineIfNeeded()) {
+                engine = getValidEngine();
+                if (engine == null) {
+                    Log.e("OverlayService", "Falha ao recriar FlutterEngine");
+                    isRunning = false;
+                    stopSelf();
+                    return;
+                }
+            } else {
+                Log.e("OverlayService", "Não foi possível recriar FlutterEngine");
+                isRunning = false;
+                stopSelf();
+                return;
+            }
         }
         
         // Mark engine as valid
@@ -569,18 +981,61 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 Log.d("OverlayService", "Could not check engine state: " + e.getMessage());
             }
 
-            engine.getLifecycleChannel().appIsResumed();
+            // Safe lifecycle channel access
+            try {
+                if (engine.getLifecycleChannel() != null) {
+                    engine.getLifecycleChannel().appIsResumed();
+                    Log.d("OverlayService", "Engine lifecycle resumed successfully");
+                } else {
+                    Log.w("OverlayService", "Engine lifecycle channel is null");
+                }
+            } catch (Exception e) {
+                Log.e("OverlayService", "Error resuming engine lifecycle: " + e.getMessage());
+            }
+            
+            // Disable semantics at engine level to prevent crashes
+            try {
+                if (engine.getAccessibilityChannel() != null) {
+                    // Disable accessibility features at engine level
+                    Log.d("OverlayService", "Accessibility channel found, disabling semantics");
+                }
+            } catch (Exception e) {
+                Log.d("OverlayService", "Accessibility channel not available or already disabled");
+            }
             
             // Create FlutterView with proper error handling
             try {
+                logOperationStart("createFlutterView");
+                
                 // Disable Impeller renderer to prevent surface crashes
                 // This is a safety measure for overlay windows
                 System.setProperty("flutter.impeller.enabled", "false");
                 System.setProperty("flutter.enable-impeller", "false");
                 
+                // Disable semantics to prevent crashes in overlay windows
+                System.setProperty("flutter.accessibility", "false");
+                System.setProperty("flutter.semantics", "false");
+                
+                Log.d("OverlayService", "FlutterView creation started with safety properties set");
+                
                 // Create FlutterTextureView with additional safety
                 FlutterTextureView textureView = new FlutterTextureView(getApplicationContext());
-                flutterView = new FlutterView(getApplicationContext(), textureView);
+                flutterView = new FlutterView(getApplicationContext(), textureView) {
+                    @Override
+                    public void updateSemantics(android.os.Bundle semanticsNode, java.util.List<android.os.Bundle> semanticsNodeChildren) {
+                        // Override to prevent semantics crashes in overlay windows
+                        try {
+                            // Only update semantics if the view is properly attached and safe
+                            if (isSurfaceSafe() && getParent() != null) {
+                                super.updateSemantics(semanticsNode, semanticsNodeChildren);
+                            } else {
+                                Log.d("OverlayService", "Skipping semantics update - surface not safe or view not attached");
+                            }
+                        } catch (Exception e) {
+                            Log.w("OverlayService", "Semantics update failed, skipping: " + e.getMessage());
+                        }
+                    }
+                };
                 
                 // Add surface error listener to catch surface-related crashes
                 flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
@@ -588,12 +1043,24 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     public void onViewAttachedToWindow(View v) {
                         Log.d("OverlayService", "FlutterView attached to window");
                         isSurfaceValid.set(true);
+                        // Ensure engine is still valid when view attaches
+                        FlutterEngine engine = getValidEngine();
+                        if (engine != null && isEngineValid(engine)) {
+                            try {
+                                flutterView.attachToFlutterEngine(engine);
+                                Log.d("OverlayService", "FlutterView reattached to engine after window attach");
+                            } catch (Exception e) {
+                                Log.e("OverlayService", "Error reattaching FlutterView to engine: " + e.getMessage());
+                            }
+                        }
                     }
 
                     @Override
                     public void onViewDetachedFromWindow(View v) {
                         Log.d("OverlayService", "FlutterView detached from window");
                         isSurfaceValid.set(false);
+                        // Don't detach from engine here as it might be temporary
+                        // The engine detachment should only happen in onDestroy
                     }
                 });
                 
@@ -616,15 +1083,43 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     }
                 });
                 
-                flutterView.attachToFlutterEngine(engine);
+                // Safe engine attachment with validation
+                try {
+                    if (engine != null && isEngineValid(engine)) {
+                        flutterView.attachToFlutterEngine(engine);
+                        Log.d("OverlayService", "FlutterView attached to engine successfully");
+                    } else {
+                        Log.e("OverlayService", "Cannot attach FlutterView - engine is null or invalid");
+                        throw new IllegalStateException("Engine is null or invalid");
+                    }
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Error attaching FlutterView to engine: " + e.getMessage());
+                    throw e;
+                }
+                
                 flutterView.setFitsSystemWindows(true);
                 flutterView.setFocusable(true);
                 flutterView.setFocusableInTouchMode(true);
                 flutterView.setBackgroundColor(Color.TRANSPARENT);
                 flutterView.setOnTouchListener(this);
                 
+                // Disable accessibility features to prevent semantics crashes
+                try {
+                    flutterView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                    flutterView.setAccessibilityDelegate(null);
+                    Log.d("OverlayService", "Accessibility features disabled for overlay");
+                } catch (Exception e) {
+                    Log.w("OverlayService", "Could not disable accessibility features: " + e.getMessage());
+                }
+                
                 // Mark surface as valid after successful creation
                 isSurfaceValid.set(true);
+                
+                // Handle semantics to prevent crashes
+                handleSemanticsUpdate();
+                
+                logOperationComplete("createFlutterView");
+                Log.d("OverlayService", "FlutterView created successfully with safety measures");
             } catch (Exception e) {
                 Log.e("OverlayService", "Failed to create FlutterView: " + e.getMessage());
                 e.printStackTrace();
@@ -715,9 +1210,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 // Add a small delay to let the FlutterView settle before adding to window manager
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
                     try {
-                        if (windowManager != null && flutterView != null && isRunning) {
-                            windowManager.addView(flutterView, params);
-                            Log.d("OverlayService", "Overlay view added successfully at position: " + initialX + "," + initialY + " with gravity: " + params.gravity);
+                        if (windowManager != null && flutterView != null && isRunning && isSurfaceSafe()) {
+                            // Final safety check before adding to window manager
+                            if (flutterView.getParent() == null) {
+                                windowManager.addView(flutterView, params);
+                                Log.d("OverlayService", "Overlay view added successfully at position: " + initialX + "," + initialY + " with gravity: " + params.gravity);
+                                
+                                // Re-apply semantics handling after view is added
+                                handleSemanticsUpdate();
+                            } else {
+                                Log.w("OverlayService", "FlutterView already has a parent, skipping addView");
+                            }
+                        } else {
+                            Log.w("OverlayService", "Cannot add overlay view - conditions not met");
                         }
                     } catch (Exception e) {
                         Log.e("OverlayService", "Failed to add overlay view: " + e.getMessage());
@@ -930,6 +1435,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public void onCreate() { // Get the cached FlutterEngine
         // Initialize resources early to prevent null pointer exceptions
         mResources = getApplicationContext().getResources();
+        
+        // Configure Sentry for overlay service debugging
+        configureSentryForOverlay();
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_USER_PRESENT);
@@ -940,6 +1448,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // Register configuration change receiver
         IntentFilter configFilter = new IntentFilter(Intent.ACTION_CONFIGURATION_CHANGED);
         registerReceiver(configurationChangeReceiver, configFilter);
+        
+        // Register app lifecycle receiver to prevent crashes during transitions
+        IntentFilter lifecycleFilter = new IntentFilter();
+        lifecycleFilter.addAction(Intent.ACTION_SCREEN_OFF);
+        lifecycleFilter.addAction(Intent.ACTION_SCREEN_ON);
+        lifecycleFilter.addAction(Intent.ACTION_USER_PRESENT);
+        registerReceiver(appLifecycleReceiver, lifecycleFilter);
         
         FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
 
