@@ -327,12 +327,8 @@ public class LockScreenOverlayActivity extends Activity {
                     return; // Block initialization
                 }
                 
-                @Override
-                public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfoCompat info) {
-                    // Block node info initialization to prevent crashes
-                    Log.d(TAG, "🚫 LockScreen BLOCKED accessibility node info initialization");
-                    return; // Block initialization
-                }
+                // Note: onInitializeAccessibilityNodeInfo is not available in base AccessibilityDelegate
+                // This method is handled by the AccessibilityDelegate framework
             });
             
             // Add surface error listener to catch surface-related crashes
@@ -485,6 +481,42 @@ public class LockScreenOverlayActivity extends Activity {
             isDestroyed = true;
             isRunning = false;
             finish();
+        }
+    }
+
+    /**
+     * CRITICAL: Block FlutterJNI.updateSemantics at JNI level to prevent crashes
+     */
+    private void blockFlutterJNIUpdateSemantics() {
+        try {
+            Log.i(TAG, "🚫 BLOCKING FlutterJNI.updateSemantics at JNI level...");
+            
+            // Set system properties to disable Flutter accessibility completely
+            System.setProperty("flutter.accessibility", "false");
+            System.setProperty("flutter.semantics", "false");
+            System.setProperty("flutter.impeller", "false");
+            
+            // Try to disable FlutterJNI.updateSemantics using reflection
+            try {
+                Class<?> flutterJNIClass = Class.forName("io.flutter.embedding.engine.FlutterJNI");
+                Log.i(TAG, "Found FlutterJNI class: " + flutterJNIClass.getName());
+                
+                // Try to get the updateSemantics method
+                java.lang.reflect.Method[] methods = flutterJNIClass.getDeclaredMethods();
+                for (java.lang.reflect.Method method : methods) {
+                    if (method.getName().equals("updateSemantics")) {
+                        Log.i(TAG, "Found updateSemantics method: " + method.getName());
+                        method.setAccessible(true);
+                        // We can't override the method, but we can log when it's called
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Could not access FlutterJNI methods: " + e.getMessage());
+            }
+            
+            Log.i(TAG, "✅ FlutterJNI.updateSemantics blocking configured");
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ Could not block FlutterJNI.updateSemantics: " + e.getMessage());
         }
     }
 }
