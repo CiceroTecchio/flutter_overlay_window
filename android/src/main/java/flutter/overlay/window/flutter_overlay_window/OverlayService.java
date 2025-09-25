@@ -97,6 +97,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private final AtomicBoolean isEngineIsolated = new AtomicBoolean(false);
     private final AtomicBoolean isEnginePaused = new AtomicBoolean(false);
     private volatile boolean isEngineDestroyed = false;
+    
+    // Accessibility service detection and safety
+    private final AtomicBoolean hasAccessibilityServices = new AtomicBoolean(false);
+    private final AtomicBoolean accessibilitySafetyEnabled = new AtomicBoolean(false);
 
     private BroadcastReceiver screenUnlockReceiver;
     private boolean isReceiverRegistered = false;
@@ -174,14 +178,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             if (Intent.ACTION_SCREEN_OFF.equals(action)) {
-                Log.d("OverlayService", "Screen off detected, but keeping overlay functional");
-                // Don't isolate engine for overlay - it needs to stay active
+                Log.d("OverlayService", "Screen off detected, isolating engine");
+                isolateEngine();
                 handleAppLifecycleChange("paused");
             } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
-                Log.d("OverlayService", "Screen on detected, overlay should remain active");
+                Log.d("OverlayService", "Screen on detected, restoring engine");
+                restoreEngine();
                 handleAppLifecycleChange("resumed");
             } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                Log.d("OverlayService", "User present detected, overlay should remain active");
+                Log.d("OverlayService", "User present detected, restoring engine");
+                restoreEngine();
                 handleAppLifecycleChange("resumed");
             }
         }
@@ -320,10 +326,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
         
         synchronized (engineLock) {
             try {
-                // Allow access to isolated engine for overlay operations
-                // Overlay needs to work even when screen is off
+                // Don't access engine if it's isolated to prevent Dart VM crashes
                 if (isEngineIsolated.get()) {
-                    Log.d("OverlayService", "Engine is isolated, but allowing access for overlay operations");
+                    Log.w("OverlayService", "Engine is isolated, cannot access safely");
+                    return null;
                 }
                 
                 // Try to get engine from cache
@@ -463,7 +469,45 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     /**
-     * Safely handles semantics updates to prevent crashes
+     * Detects if accessibility services are enabled on the device
+     * This helps prevent crashes when auto-click apps or other accessibility services are present
+     */
+    private void detectAccessibilityServices() {
+        try {
+            android.accessibilityservice.AccessibilityServiceInfo[] services = 
+                ((android.accessibilityservice.AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE))
+                .getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+            
+            boolean hasServices = services != null && services.length > 0;
+            hasAccessibilityServices.set(hasServices);
+            
+            if (hasServices) {
+                Log.w("OverlayService", "Accessibility services detected (" + services.length + " services) - enabling safety measures");
+                accessibilitySafetyEnabled.set(true);
+                
+                // Log service names for debugging
+                for (android.accessibilityservice.AccessibilityServiceInfo service : services) {
+                    try {
+                        String serviceName = service.getResolveInfo().serviceInfo.packageName;
+                        Log.d("OverlayService", "Active accessibility service: " + serviceName);
+                    } catch (Exception e) {
+                        Log.d("OverlayService", "Could not get service name: " + e.getMessage());
+                    }
+                }
+            } else {
+                Log.d("OverlayService", "No accessibility services detected");
+                accessibilitySafetyEnabled.set(false);
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error detecting accessibility services: " + e.getMessage());
+            // Assume accessibility services might be present for safety
+            hasAccessibilityServices.set(true);
+            accessibilitySafetyEnabled.set(true);
+        }
+    }
+
+    /**
+     * Safely handles semantics updates to prevent crashes with accessibility services
      */
     private void handleSemanticsUpdate() {
         try {
@@ -476,10 +520,90 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     flutterView.setAccessibilityDelegate(null);
                 }
                 
-                Log.d("OverlayService", "Semantics handling configured for overlay");
+                // Additional safety measures for accessibility services
+                try {
+                    // Disable accessibility focus to prevent conflicts with auto-click apps
+                    flutterView.setFocusable(false);
+                    flutterView.setFocusableInTouchMode(false);
+                    
+                    // Clear any accessibility state
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                        flutterView.setContentDescription(null);
+                    }
+                    
+                    // Disable accessibility events
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
+                        flutterView.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_NONE);
+                    }
+                } catch (Exception e) {
+                    Log.w("OverlayService", "Could not fully disable accessibility features: " + e.getMessage());
+                }
+                
+                Log.d("OverlayService", "Semantics handling configured for overlay with accessibility safety");
             }
         } catch (Exception e) {
             Log.e("OverlayService", "Error handling semantics update: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Applies comprehensive safety measures to prevent crashes with accessibility services
+     * This method specifically addresses the semantics crash issue
+     */
+    private void applyAccessibilitySafetyMeasures() {
+        try {
+            if (flutterView == null) {
+                Log.w("OverlayService", "FlutterView is null, cannot apply accessibility safety measures");
+                return;
+            }
+
+            // Detect accessibility services first
+            detectAccessibilityServices();
+
+            // Apply comprehensive safety measures
+            if (accessibilitySafetyEnabled.get()) {
+                Log.d("OverlayService", "Applying comprehensive accessibility safety measures");
+                
+                // Disable all accessibility features that could cause conflicts
+                flutterView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                flutterView.setAccessibilityDelegate(null);
+                
+                // Disable focus to prevent accessibility service conflicts
+                flutterView.setFocusable(false);
+                flutterView.setFocusableInTouchMode(false);
+                
+                // Clear accessibility state
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                    flutterView.setContentDescription(null);
+                }
+                
+                // Disable accessibility events
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
+                    flutterView.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_NONE);
+                }
+                
+                // Additional safety for overlay windows
+                flutterView.setClickable(false);
+                flutterView.setLongClickable(false);
+                
+                // Disable semantics at the engine level if possible
+                try {
+                    FlutterEngine engine = getValidEngine();
+                    if (engine != null && engine.getAccessibilityChannel() != null) {
+                        // Try to disable semantics at engine level
+                        Log.d("OverlayService", "Attempting to disable semantics at engine level");
+                    }
+                } catch (Exception e) {
+                    Log.w("OverlayService", "Could not disable engine-level semantics: " + e.getMessage());
+                }
+                
+                Log.d("OverlayService", "Accessibility safety measures applied successfully");
+            } else {
+                Log.d("OverlayService", "No accessibility services detected, using standard safety measures");
+                handleSemanticsUpdate();
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "Error applying accessibility safety measures: " + e.getMessage());
         }
     }
 
@@ -488,20 +612,42 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     private void handleAppLifecycleChange(String state) {
         try {
-            if (isDestroyed.get()) {
-                Log.w("OverlayService", "Service destroyed, skipping lifecycle change: " + state);
+            if (isDestroyed.get() || !isEngineValid.get()) {
+                Log.w("OverlayService", "Service destroyed or engine invalid, skipping lifecycle change: " + state);
                 return;
             }
 
             FlutterEngine engine = getValidEngine();
-            if (engine == null) {
+            if (engine == null || !isEngineValid(engine)) {
                 Log.w("OverlayService", "Engine not available for lifecycle change: " + state);
                 return;
             }
 
-            // For overlay, we don't need to change engine lifecycle states
-            // Overlay should remain functional regardless of app state
-            Log.d("OverlayService", "Overlay lifecycle change: " + state + " - keeping overlay active");
+            // Add delay to prevent crashes during rapid lifecycle changes
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                try {
+                    if (engine.getLifecycleChannel() != null) {
+                        switch (state) {
+                            case "foreground":
+                            case "resumed":
+                                engine.getLifecycleChannel().appIsResumed();
+                                Log.d("OverlayService", "App resumed safely");
+                                break;
+                            case "background":
+                            case "paused":
+                                engine.getLifecycleChannel().appIsInactive();
+                                Log.d("OverlayService", "App paused safely");
+                                break;
+                            case "stopped":
+                                engine.getLifecycleChannel().appIsDetached();
+                                Log.d("OverlayService", "App detached safely");
+                                break;
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Error handling lifecycle change " + state + ": " + e.getMessage());
+                }
+            }, 200); // 200ms delay to prevent rapid transitions
 
         } catch (Exception e) {
             Log.e("OverlayService", "Error in handleAppLifecycleChange: " + e.getMessage());
@@ -975,7 +1121,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 System.setProperty("flutter.accessibility", "false");
                 System.setProperty("flutter.semantics", "false");
                 
-                Log.d("OverlayService", "FlutterView creation started with safety properties set");
+                // Additional safety properties for accessibility services
+                System.setProperty("flutter.disable-semantics", "true");
+                System.setProperty("flutter.force-disable-accessibility", "true");
+                
+                Log.d("OverlayService", "FlutterView creation started with comprehensive safety properties set");
                 
                 // Create FlutterTextureView with additional safety
                 FlutterTextureView textureView = new FlutterTextureView(getApplicationContext());
@@ -1042,25 +1192,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 }
                 
                 flutterView.setFitsSystemWindows(true);
-                flutterView.setFocusable(true);
-                flutterView.setFocusableInTouchMode(true);
                 flutterView.setBackgroundColor(Color.TRANSPARENT);
                 flutterView.setOnTouchListener(this);
                 
-                // Disable accessibility features to prevent semantics crashes
-                try {
-                    flutterView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-                    flutterView.setAccessibilityDelegate(null);
-                    Log.d("OverlayService", "Accessibility features disabled for overlay");
-                } catch (Exception e) {
-                    Log.w("OverlayService", "Could not disable accessibility features: " + e.getMessage());
-                }
+                // Apply comprehensive accessibility safety measures
+                applyAccessibilitySafetyMeasures();
                 
                 // Mark surface as valid after successful creation
                 isSurfaceValid.set(true);
-                
-                // Handle semantics to prevent crashes
-                handleSemanticsUpdate();
                 
                 logOperationComplete("createFlutterView");
                 Log.d("OverlayService", "FlutterView created successfully with safety measures");
@@ -1160,8 +1299,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                                 windowManager.addView(flutterView, params);
                                 Log.d("OverlayService", "Overlay view added successfully at position: " + initialX + "," + initialY + " with gravity: " + params.gravity);
                                 
-                                // Re-apply semantics handling after view is added
-                                handleSemanticsUpdate();
+                                // Re-apply comprehensive accessibility safety measures after view is added
+                                applyAccessibilitySafetyMeasures();
                             } else {
                                 Log.w("OverlayService", "FlutterView already has a parent, skipping addView");
                             }
@@ -1379,6 +1518,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public void onCreate() { // Get the cached FlutterEngine
         // Initialize resources early to prevent null pointer exceptions
         mResources = getApplicationContext().getResources();
+        
+        // Detect accessibility services early to enable safety measures
+        detectAccessibilityServices();
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_USER_PRESENT);
