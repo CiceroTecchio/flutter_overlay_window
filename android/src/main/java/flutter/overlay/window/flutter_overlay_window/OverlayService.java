@@ -1278,10 +1278,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 // Safe engine attachment with validation
                 try {
                     if (engine != null && isEngineValid(engine)) {
-                        flutterView.attachToFlutterEngine(engine);
-                        Log.d("OverlayService", "FlutterView attached to engine successfully");
-                        
-                        // CRITICAL: Disable semantics at engine level to prevent crashes
+                        // CRITICAL: Apply safety measures BEFORE attaching to engine
                         try {
                             // Disable accessibility channel completely
                             if (engine.getAccessibilityChannel() != null) {
@@ -1326,6 +1323,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         } catch (Exception e) {
                             Log.w("OverlayService", "Could not disable engine-level accessibility: " + e.getMessage());
                         }
+                        
+                        // NOW attach to engine after safety measures are applied
+                        flutterView.attachToFlutterEngine(engine);
+                        Log.d("OverlayService", "FlutterView attached to engine successfully after safety measures");
                     } else {
                         Log.e("OverlayService", "Cannot attach FlutterView - engine is null or invalid");
                         throw new IllegalStateException("Engine is null or invalid");
@@ -1339,87 +1340,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.setBackgroundColor(Color.TRANSPARENT);
                 flutterView.setOnTouchListener(this);
                 
-                // CRITICAL: Override FlutterView methods to prevent crashes but allow auto-click to work
+                // CRITICAL: Apply accessibility protection AFTER engine attachment
                 try {
-                    // Create a custom FlutterView that protects overlay but allows auto-click
-                    FlutterView customFlutterView = new FlutterView(getApplicationContext(), textureView) {
-                        @Override
-                        public void sendAccessibilityEvent(int eventType) {
-                            // Allow auto-click to work but protect overlay from crashes
-                            Log.d("OverlayService", "Protecting FlutterView from accessibility event: " + eventType);
-                            
-                            // Only block events that could cause crashes
-                            if (eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ||
-                                eventType == AccessibilityEvent.TYPE_VIEW_SELECTED ||
-                                eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
-                                Log.d("OverlayService", "Blocking potentially dangerous FlutterView accessibility event");
-                                return; // Block potentially dangerous events
-                            }
-                            
-                            // Allow other events to pass through for auto-click functionality
-                            super.sendAccessibilityEvent(eventType);
-                        }
-                        
-                        @Override
-                        public boolean onRequestSendAccessibilityEvent(View child, AccessibilityEvent event) {
-                            // Allow auto-click to work but protect overlay
-                            Log.d("OverlayService", "Protecting FlutterView from accessibility request");
-                            
-                            // Only block events that could cause crashes
-                            if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ||
-                                event.getEventType() == AccessibilityEvent.TYPE_VIEW_SELECTED ||
-                                event.getEventType() == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
-                                Log.d("OverlayService", "Blocking potentially dangerous FlutterView accessibility request");
-                                return false; // Block potentially dangerous events
-                            }
-                            
-                            // Allow other events to pass through for auto-click functionality
-                            return true;
-                        }
-                        
-                        @Override
-                        public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
-                            // Allow auto-click to work but protect overlay
-                            Log.d("OverlayService", "Protecting FlutterView from accessibility initialization");
-                            
-                            // Only block events that could cause crashes
-                            if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ||
-                                event.getEventType() == AccessibilityEvent.TYPE_VIEW_SELECTED ||
-                                event.getEventType() == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
-                                Log.d("OverlayService", "Blocking potentially dangerous FlutterView accessibility initialization");
-                                return; // Block potentially dangerous events
-                            }
-                            
-                            // Allow other events to pass through for auto-click functionality
-                            super.onInitializeAccessibilityEvent(event);
-                        }
-                        
-                        // ULTRA-CRITICAL: Override the method that causes the crash
-                        @Override
-                        public void onAttachedToWindow() {
-                            super.onAttachedToWindow();
-                            // Protect overlay but allow auto-click to work
-                            setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-                            Log.d("OverlayService", "FlutterView attached - protected from accessibility crashes");
-                        }
-                        
-                        // Override to prevent semantics updates
-                        @Override
-                        public void onDetachedFromWindow() {
-                            // Don't call super to prevent cleanup that might trigger semantics
-                            Log.d("OverlayService", "FlutterView detached - preventing semantics cleanup");
-                        }
-                    };
-                    
-                    // Replace the original FlutterView with our custom one
-                    flutterView = customFlutterView;
-                    Log.d("OverlayService", "Custom FlutterView with protective semantics blocking created");
+                    // Apply comprehensive accessibility safety measures
+                    applyAccessibilitySafetyMeasures();
+                    Log.d("OverlayService", "Accessibility safety measures applied after engine attachment");
                 } catch (Exception e) {
-                    Log.w("OverlayService", "Could not create custom FlutterView: " + e.getMessage());
+                    Log.w("OverlayService", "Could not apply accessibility safety measures: " + e.getMessage());
                 }
-                
-                // Apply comprehensive accessibility safety measures
-                applyAccessibilitySafetyMeasures();
                 
                 // Mark surface as valid after successful creation
                 isSurfaceValid.set(true);
