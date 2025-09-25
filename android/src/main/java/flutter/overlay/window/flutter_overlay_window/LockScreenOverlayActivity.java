@@ -136,6 +136,8 @@ public class LockScreenOverlayActivity extends Activity {
      */
     private void disableAccessibilityForActivity() {
         try {
+            Log.i(TAG, "🔒 DISABLING ACCESSIBILITY FOR LOCKSCREEN OVERLAY...");
+            
             // Disable accessibility for the entire activity window
             getWindow().getDecorView().setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             getWindow().getDecorView().setAccessibilityDelegate(null);
@@ -148,9 +150,9 @@ public class LockScreenOverlayActivity extends Activity {
             ViewGroup rootView = (ViewGroup) getWindow().getDecorView();
             disableAccessibilityRecursively(rootView);
             
-            Log.d(TAG, "Accessibility completely disabled for LockScreenOverlayActivity");
+            Log.i(TAG, "✅ ACCESSIBILITY COMPLETELY DISABLED FOR LOCKSCREEN OVERLAY");
         } catch (Exception e) {
-            Log.e(TAG, "Error disabling accessibility: " + e.getMessage());
+            Log.e(TAG, "❌ Error disabling accessibility: " + e.getMessage());
         }
     }
     
