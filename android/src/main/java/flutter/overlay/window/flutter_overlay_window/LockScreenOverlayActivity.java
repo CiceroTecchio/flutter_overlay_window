@@ -196,6 +196,9 @@ public class LockScreenOverlayActivity extends Activity {
         // CRITICAL: Disable accessibility for the entire activity
         getWindow().getDecorView().setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         getWindow().getDecorView().setAccessibilityDelegate(null);
+        
+        // CRITICAL: Block FlutterJNI.updateSemantics at JNI level
+        blockFlutterJNIUpdateSemantics();
     }
 
     private void registerCloseReceiver() {
@@ -301,40 +304,34 @@ public class LockScreenOverlayActivity extends Activity {
             flutterView.setFocusable(true);
             flutterView.setFocusableInTouchMode(true);
             
-            // Add selective accessibility protection
+            // Add comprehensive accessibility protection that blocks ALL accessibility
             flutterView.setAccessibilityDelegate(new View.AccessibilityDelegate() {
                 @Override
                 public void sendAccessibilityEvent(View host, int eventType) {
-                    // Block only specific events that cause crashes
-                    if (eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ||
-                        eventType == AccessibilityEvent.TYPE_VIEW_SELECTED ||
-                        eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
-                        Log.d(TAG, "LockScreen blocked problematic accessibility event: " + eventType);
-                        return; // Block these specific events
-                    }
-                    // Allow other events for normal user interaction
-                    try {
-                        super.sendAccessibilityEvent(host, eventType);
-                    } catch (Exception e) {
-                        Log.d(TAG, "LockScreen caught accessibility event exception: " + e.getMessage());
-                    }
+                    // Block ALL accessibility events to prevent crashes
+                    Log.d(TAG, "🚫 LockScreen BLOCKED accessibility event: " + eventType);
+                    return; // Block all events
                 }
                 
                 @Override
                 public boolean performAccessibilityAction(View host, int action, Bundle args) {
-                    // Block only actions that might cause crashes
-                    if (action == AccessibilityNodeInfoCompat.ACTION_ACCESSIBILITY_FOCUS ||
-                        action == AccessibilityNodeInfoCompat.ACTION_CLEAR_ACCESSIBILITY_FOCUS) {
-                        Log.d(TAG, "LockScreen blocked problematic accessibility action: " + action);
-                        return false;
-                    }
-                    // Allow other actions for normal user interaction
-                    try {
-                        return super.performAccessibilityAction(host, action, args);
-                    } catch (Exception e) {
-                        Log.d(TAG, "LockScreen caught accessibility action exception: " + e.getMessage());
-                        return false;
-                    }
+                    // Block ALL accessibility actions to prevent crashes
+                    Log.d(TAG, "🚫 LockScreen BLOCKED accessibility action: " + action);
+                    return false; // Block all actions
+                }
+                
+                @Override
+                public void onInitializeAccessibilityEvent(View host, AccessibilityEvent event) {
+                    // Block initialization to prevent crashes
+                    Log.d(TAG, "🚫 LockScreen BLOCKED accessibility event initialization");
+                    return; // Block initialization
+                }
+                
+                @Override
+                public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfoCompat info) {
+                    // Block node info initialization to prevent crashes
+                    Log.d(TAG, "🚫 LockScreen BLOCKED accessibility node info initialization");
+                    return; // Block initialization
                 }
             });
             
