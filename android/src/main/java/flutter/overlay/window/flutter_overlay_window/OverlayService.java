@@ -34,6 +34,7 @@ import android.accessibilityservice.AccessibilityServiceInfo;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.ViewGroup;
 import android.os.Bundle;
+import android.graphics.Rect;
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 
 import androidx.annotation.Nullable;
@@ -1138,9 +1139,18 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 System.setProperty("flutter.impeller.enabled", "false");
                 System.setProperty("flutter.enable-impeller", "false");
                 
-                // Simple: Just disable accessibility for overlay windows
+                // NUCLEAR OPTION: Completely disable semantics and accessibility
                 System.setProperty("flutter.accessibility", "false");
                 System.setProperty("flutter.semantics", "false");
+                System.setProperty("flutter.accessibility.enabled", "false");
+                System.setProperty("flutter.semantics.enabled", "false");
+                System.setProperty("flutter.accessibility.semantics", "false");
+                
+                // Disable Flutter's internal semantics system
+                System.setProperty("flutter.semantics.enabled", "false");
+                System.setProperty("flutter.accessibility.semantics", "false");
+                
+                Log.i("OverlayService", "🚫 FLUTTER SEMANTICS COMPLETELY DISABLED");
                 
                 Log.d("OverlayService", "FlutterView creation started with comprehensive safety properties set");
                 
@@ -1188,11 +1198,54 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         Log.d("OverlayService", "FlutterTextureView detached - preventing semantics cleanup");
                     }
                     
+                    // CRITICAL: Override methods that might trigger semantics
+                    @Override
+                    public void requestLayout() {
+                        // Block layout requests that might trigger semantics
+                        Log.d("OverlayService", "FlutterTextureView blocked requestLayout to prevent semantics");
+                        // Don't call super to prevent semantics triggers
+                    }
+                    
+                    @Override
+                    public void invalidate() {
+                        // Block invalidate calls that might trigger semantics
+                        Log.d("OverlayService", "FlutterTextureView blocked invalidate to prevent semantics");
+                        // Don't call super to prevent semantics triggers
+                    }
+                    
                     // Note: requestSendAccessibilityEvent is not available in FlutterTextureView
                     // The method is blocked through AccessibilityDelegate
                 };
                 
-                flutterView = new FlutterView(getApplicationContext(), customTextureView);
+                flutterView = new FlutterView(getApplicationContext(), customTextureView) {
+                    @Override
+                    public void requestLayout() {
+                        // Block layout requests that might trigger semantics
+                        Log.d("OverlayService", "FlutterView blocked requestLayout to prevent semantics");
+                        // Don't call super to prevent semantics triggers
+                    }
+                    
+                    @Override
+                    public void invalidate() {
+                        // Block invalidate calls that might trigger semantics
+                        Log.d("OverlayService", "FlutterView blocked invalidate to prevent semantics");
+                        // Don't call super to prevent semantics triggers
+                    }
+                    
+                    @Override
+                    public void invalidate(int l, int t, int r, int b) {
+                        // Block invalidate calls that might trigger semantics
+                        Log.d("OverlayService", "FlutterView blocked invalidate with bounds to prevent semantics");
+                        // Don't call super to prevent semantics triggers
+                    }
+                    
+                    @Override
+                    public void invalidate(Rect dirty) {
+                        // Block invalidate calls that might trigger semantics
+                        Log.d("OverlayService", "FlutterView blocked invalidate with rect to prevent semantics");
+                        // Don't call super to prevent semantics triggers
+                    }
+                };
                 
                 // Simple surface validation
                 isSurfaceValid.set(true);
@@ -1606,26 +1659,34 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 
                 // NUCLEAR OPTION: Try to disable semantics at the absolute lowest level
                 try {
+                    Log.i("OverlayService", "🔧 ATTEMPTING TO DISABLE SEMANTICS AT JNI LEVEL...");
+                    
                     // Try to access the FlutterJNI and disable semantics there
                     java.lang.reflect.Field jniField = flutterEngine.getClass().getDeclaredField("flutterJNI");
                     jniField.setAccessible(true);
                     Object flutterJNI = jniField.get(flutterEngine);
                     
                     if (flutterJNI != null) {
+                        Log.i("OverlayService", "✅ FlutterJNI found, attempting to disable semantics...");
+                        
                         // Try to disable semantics in FlutterJNI
-                        java.lang.reflect.Method disableSemanticsJNIMethod = 
-                            flutterJNI.getClass().getMethod("setSemanticsEnabled", boolean.class);
-                        disableSemanticsJNIMethod.invoke(flutterJNI, false);
-                        Log.d("OverlayService", "Disabled semantics at JNI level immediately after engine creation");
+                        try {
+                            java.lang.reflect.Method disableSemanticsJNIMethod = 
+                                flutterJNI.getClass().getMethod("setSemanticsEnabled", boolean.class);
+                            disableSemanticsJNIMethod.invoke(flutterJNI, false);
+                            Log.i("OverlayService", "✅ Disabled semantics at JNI level");
+                        } catch (Exception e) {
+                            Log.w("OverlayService", "⚠️ Could not disable semantics at JNI level: " + e.getMessage());
+                        }
                         
                         // Try to disable accessibility in FlutterJNI
                         try {
                             java.lang.reflect.Method disableAccessibilityJNIMethod = 
                                 flutterJNI.getClass().getMethod("setAccessibilityEnabled", boolean.class);
                             disableAccessibilityJNIMethod.invoke(flutterJNI, false);
-                            Log.d("OverlayService", "Disabled accessibility at JNI level immediately after engine creation");
+                            Log.i("OverlayService", "✅ Disabled accessibility at JNI level");
                         } catch (Exception e) {
-                            Log.d("OverlayService", "Could not disable accessibility at JNI level: " + e.getMessage());
+                            Log.w("OverlayService", "⚠️ Could not disable accessibility at JNI level: " + e.getMessage());
                         }
                         
                         // CRITICAL: Try to disable the specific method that causes the crash
@@ -1633,13 +1694,25 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             java.lang.reflect.Method disableRequestSendAccessibilityEventMethod = 
                                 flutterJNI.getClass().getMethod("setRequestSendAccessibilityEventEnabled", boolean.class);
                             disableRequestSendAccessibilityEventMethod.invoke(flutterJNI, false);
-                            Log.d("OverlayService", "Disabled requestSendAccessibilityEvent at JNI level");
+                            Log.i("OverlayService", "✅ Disabled requestSendAccessibilityEvent at JNI level");
                         } catch (Exception e) {
-                            Log.d("OverlayService", "Could not disable requestSendAccessibilityEvent at JNI level: " + e.getMessage());
+                            Log.w("OverlayService", "⚠️ Could not disable requestSendAccessibilityEvent at JNI level: " + e.getMessage());
                         }
+                        
+                        // Try to disable updateSemantics method specifically
+                        try {
+                            java.lang.reflect.Method disableUpdateSemanticsMethod = 
+                                flutterJNI.getClass().getMethod("setUpdateSemanticsEnabled", boolean.class);
+                            disableUpdateSemanticsMethod.invoke(flutterJNI, false);
+                            Log.i("OverlayService", "✅ Disabled updateSemantics at JNI level");
+                        } catch (Exception e) {
+                            Log.w("OverlayService", "⚠️ Could not disable updateSemantics at JNI level: " + e.getMessage());
+                        }
+                    } else {
+                        Log.w("OverlayService", "❌ FlutterJNI is null");
                     }
                 } catch (Exception e) {
-                    Log.w("OverlayService", "Could not disable semantics at JNI level immediately: " + e.getMessage());
+                    Log.e("OverlayService", "❌ Error disabling semantics at JNI level: " + e.getMessage());
                 }
 
                 // Cache the created FlutterEngine for future use
