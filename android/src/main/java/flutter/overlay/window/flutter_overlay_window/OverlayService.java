@@ -1270,12 +1270,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     return; // Block initialization
                 }
                 
-                @Override
-                public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfoCompat info) {
-                    // Block node info initialization to prevent crashes
-                    Log.d("OverlayService", "🚫 BLOCKED accessibility node info initialization");
-                    return; // Block initialization
-                }
+                // Note: onInitializeAccessibilityNodeInfo is not available in base AccessibilityDelegate
+                // This method is handled by the AccessibilityDelegate framework
             });
                 
                 // CRITICAL: Apply accessibility protection AFTER engine attachment
