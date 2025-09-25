@@ -264,23 +264,6 @@ public class LockScreenOverlayActivity extends Activity {
                 }
             });
             
-            // Safe engine attachment
-            synchronized (engineLock) {
-                if (isDestroyed || !FlutterEngineManager.isEngineValid(flutterEngine)) {
-                    Log.e(TAG, "Engine invalid during view attachment");
-                    safeFinish();
-                    return;
-                }
-                
-                try {
-                    flutterView.attachToFlutterEngine(flutterEngine);
-                } catch (Exception e) {
-                    Log.e(TAG, "Error attaching view to engine: " + e.getMessage());
-                    safeFinish();
-                    return;
-                }
-            }
-            
             // Configure view properties
             flutterView.setBackgroundColor(Color.TRANSPARENT);
             flutterView.setFocusable(true);
@@ -297,6 +280,24 @@ public class LockScreenOverlayActivity extends Activity {
             root.addView(flutterView, layoutParams);
 
             setContentView(root);
+            
+            // CRITICAL: Attach engine AFTER setContentView to prevent accessibility issues
+            synchronized (engineLock) {
+                if (isDestroyed || !FlutterEngineManager.isEngineValid(flutterEngine)) {
+                    Log.e(TAG, "Engine invalid during view attachment");
+                    safeFinish();
+                    return;
+                }
+                
+                try {
+                    flutterView.attachToFlutterEngine(flutterEngine);
+                    Log.d(TAG, "FlutterView attached to engine after setContentView");
+                } catch (Exception e) {
+                    Log.e(TAG, "Error attaching view to engine: " + e.getMessage());
+                    safeFinish();
+                    return;
+                }
+            }
             
         } catch (Exception e) {
             Log.e(TAG, "Error creating FlutterView: " + e.getMessage());
