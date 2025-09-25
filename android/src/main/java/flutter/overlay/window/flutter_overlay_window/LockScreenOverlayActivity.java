@@ -4,8 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.os.Handler;
-import android.os.Looper;
+// Removed Handler and Looper imports - using direct execution
 
 import android.app.Activity;
 import android.os.Build;
@@ -179,75 +178,74 @@ public class LockScreenOverlayActivity extends Activity {
     }
 
     private void createFlutterView(final int pxWidth, final int pxHeight) {
-        new Handler(Looper.getMainLooper()).post(() -> {
-            try {
-                if (isDestroyed) return;
-                
-                // Re-validate engine state before creating view
-                synchronized (engineLock) {
-                    if (!FlutterEngineManager.isEngineValid(flutterEngine)) {
-                        Log.e(TAG, "Engine is invalid during view creation");
-                        safeFinish();
-                        return;
-                    }
+        // Direct execution without handler for better performance
+        try {
+            if (isDestroyed) return;
+            
+            // Re-validate engine state before creating view
+            synchronized (engineLock) {
+                if (!FlutterEngineManager.isEngineValid(flutterEngine)) {
+                    Log.e(TAG, "Engine is invalid during view creation");
+                    safeFinish();
+                    return;
                 }
-
-                // Create FlutterView with error handling
-                flutterView = new FlutterView(this, new FlutterTextureView(this));
-                
-                // Add surface error listener to catch surface-related crashes
-                flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-                    @Override
-                    public void onViewAttachedToWindow(View v) {
-                        Log.d(TAG, "FlutterView attached to window");
-                    }
-
-                    @Override
-                    public void onViewDetachedFromWindow(View v) {
-                        Log.d(TAG, "FlutterView detached from window");
-                    }
-                });
-                
-                // Safe engine attachment
-                synchronized (engineLock) {
-                    if (isDestroyed || !FlutterEngineManager.isEngineValid(flutterEngine)) {
-                        Log.e(TAG, "Engine invalid during view attachment");
-                        safeFinish();
-                        return;
-                    }
-                    
-                    try {
-                        flutterView.attachToFlutterEngine(flutterEngine);
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error attaching view to engine: " + e.getMessage());
-                        safeFinish();
-                        return;
-                    }
-                }
-                
-                // Configure view properties
-                flutterView.setBackgroundColor(Color.TRANSPARENT);
-                flutterView.setFocusable(true);
-                flutterView.setFocusableInTouchMode(true);
-
-                // Create layout
-                FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(pxWidth, pxHeight);
-                layoutParams.gravity = Gravity.CENTER;
-
-                FrameLayout root = new FrameLayout(this);
-                root.setLayoutParams(new FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT));
-                root.addView(flutterView, layoutParams);
-
-                setContentView(root);
-                
-            } catch (Exception e) {
-                Log.e(TAG, "Error creating FlutterView: " + e.getMessage());
-                e.printStackTrace();
-                safeFinish();
             }
-        });
+
+            // Create FlutterView with error handling
+            flutterView = new FlutterView(this, new FlutterTextureView(this));
+            
+            // Add surface error listener to catch surface-related crashes
+            flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                @Override
+                public void onViewAttachedToWindow(View v) {
+                    Log.d(TAG, "FlutterView attached to window");
+                }
+
+                @Override
+                public void onViewDetachedFromWindow(View v) {
+                    Log.d(TAG, "FlutterView detached from window");
+                }
+            });
+            
+            // Safe engine attachment
+            synchronized (engineLock) {
+                if (isDestroyed || !FlutterEngineManager.isEngineValid(flutterEngine)) {
+                    Log.e(TAG, "Engine invalid during view attachment");
+                    safeFinish();
+                    return;
+                }
+                
+                try {
+                    flutterView.attachToFlutterEngine(flutterEngine);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error attaching view to engine: " + e.getMessage());
+                    safeFinish();
+                    return;
+                }
+            }
+            
+            // Configure view properties
+            flutterView.setBackgroundColor(Color.TRANSPARENT);
+            flutterView.setFocusable(true);
+            flutterView.setFocusableInTouchMode(true);
+
+            // Create layout
+            FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(pxWidth, pxHeight);
+            layoutParams.gravity = Gravity.CENTER;
+
+            FrameLayout root = new FrameLayout(this);
+            root.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+            root.addView(flutterView, layoutParams);
+
+            setContentView(root);
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error creating FlutterView: " + e.getMessage());
+            e.printStackTrace();
+            safeFinish();
+        }
     }
 
     @Override
