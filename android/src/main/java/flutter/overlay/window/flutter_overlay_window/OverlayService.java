@@ -476,15 +476,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     private void detectAccessibilityServices() {
         try {
-            AccessibilityServiceInfo[] services = 
+            java.util.List<AccessibilityServiceInfo> services = 
                 ((AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE))
                 .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
             
-            boolean hasServices = services != null && services.length > 0;
+            boolean hasServices = services != null && !services.isEmpty();
             hasAccessibilityServices.set(hasServices);
             
             if (hasServices) {
-                Log.w("OverlayService", "Accessibility services detected (" + services.length + " services) - enabling safety measures");
+                Log.w("OverlayService", "Accessibility services detected (" + services.size() + " services) - enabling safety measures");
                 accessibilitySafetyEnabled.set(true);
                 
                 // Log service names for debugging
