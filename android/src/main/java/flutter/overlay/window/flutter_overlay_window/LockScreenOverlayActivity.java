@@ -141,8 +141,8 @@ public class LockScreenOverlayActivity extends Activity {
             getWindow().getDecorView().setAccessibilityDelegate(null);
             getWindow().getDecorView().setContentDescription(null);
             
-            // Disable accessibility for the activity itself
-            setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            // Note: Activity doesn't have setImportantForAccessibility method
+            // Accessibility is disabled through the window and views
             
             // Disable accessibility for the entire view hierarchy
             ViewGroup rootView = (ViewGroup) getWindow().getDecorView();
