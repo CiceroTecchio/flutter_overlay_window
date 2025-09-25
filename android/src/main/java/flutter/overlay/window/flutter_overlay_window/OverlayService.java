@@ -1174,12 +1174,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         Log.d("OverlayService", "FlutterTextureView detached - preventing semantics cleanup");
                     }
                     
-                    @Override
-                    public boolean requestSendAccessibilityEvent(View child, AccessibilityEvent event) {
-                        // CRITICAL: Block this method to prevent the NullPointerException
-                        Log.d("OverlayService", "FlutterTextureView blocked requestSendAccessibilityEvent");
-                        return false; // Return false to prevent the event from being sent
-                    }
+                    // Note: requestSendAccessibilityEvent is not available in FlutterTextureView
+                    // The method is blocked through AccessibilityDelegate
                 };
                 
                 flutterView = new FlutterView(getApplicationContext(), customTextureView) {

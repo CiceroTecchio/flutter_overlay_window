@@ -235,12 +235,8 @@ public class LockScreenOverlayActivity extends Activity {
                     Log.d(TAG, "LockScreen FlutterTextureView detached - preventing semantics cleanup");
                 }
                 
-                @Override
-                public boolean requestSendAccessibilityEvent(View child, AccessibilityEvent event) {
-                    // CRITICAL: Block this method to prevent the NullPointerException
-                    Log.d(TAG, "LockScreen FlutterTextureView blocked requestSendAccessibilityEvent");
-                    return false; // Return false to prevent the event from being sent
-                }
+                // Note: requestSendAccessibilityEvent is not available in FlutterTextureView
+                // The method is blocked through AccessibilityDelegate
             };
             
             flutterView = new FlutterView(this, customTextureView) {
