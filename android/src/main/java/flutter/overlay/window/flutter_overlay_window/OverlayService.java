@@ -607,13 +607,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             Log.d("OverlayService", "Blocking accessibility event type: " + eventType);
                             // Do nothing - block the event
                         }
-                        
-                        @Override
-                        public void sendAccessibilityEventUnchecked(AccessibilityEvent event) {
-                            // Block all accessibility events
-                            Log.d("OverlayService", "Blocking unchecked accessibility event");
-                            // Do nothing - block the event
-                        }
                     };
                     
                     // Set the blocking delegate
