@@ -48,6 +48,7 @@ import java.util.TimerTask;
 
 import io.flutter.embedding.android.FlutterTextureView;
 import io.flutter.embedding.android.FlutterView;
+import android.view.accessibility.AccessibilityNodeInfo;
 import io.flutter.FlutterInjector;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.embedding.engine.FlutterEngineCache;
@@ -58,6 +59,47 @@ import io.flutter.plugin.common.JSONMessageCodec;
 import io.flutter.plugin.common.MethodChannel;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * Custom FlutterView that completely blocks accessibility to prevent crashes
+ */
+class SafeFlutterView extends FlutterView {
+    public SafeFlutterView(Context context) {
+        super(context);
+        // Completely disable accessibility
+        setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        setContentDescription(null);
+        setAccessibilityDelegate(null);
+    }
+    
+    @Override
+    public void sendAccessibilityEvent(int eventType) {
+        // Block ALL accessibility events
+        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility event: " + eventType);
+        return; // Block all events
+    }
+    
+    @Override
+    public boolean performAccessibilityAction(int action, Bundle arguments) {
+        // Block ALL accessibility actions
+        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility action: " + action);
+        return false; // Block all actions
+    }
+    
+    @Override
+    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+        // Block initialization
+        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility event initialization");
+        return; // Block initialization
+    }
+    
+    @Override
+    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+        // Block node info initialization
+        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility node info initialization");
+        return; // Block initialization
+    }
+}
 
 public class OverlayService extends Service implements View.OnTouchListener {
     private final int DEFAULT_NAV_BAR_HEIGHT_DP = 48;
@@ -1204,7 +1246,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     // The method is blocked through AccessibilityDelegate
                 };
                 
-                flutterView = new FlutterView(getApplicationContext(), customTextureView);
+                flutterView = new SafeFlutterView(getApplicationContext());
                 
                 // Simple surface validation
                 isSurfaceValid.set(true);
