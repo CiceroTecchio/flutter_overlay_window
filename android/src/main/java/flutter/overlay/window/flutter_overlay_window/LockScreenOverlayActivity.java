@@ -239,17 +239,12 @@ public class LockScreenOverlayActivity extends Activity {
                 // The method is blocked through AccessibilityDelegate
             };
             
-            flutterView = new FlutterView(this, customTextureView) {
-                // Note: requestSendAccessibilityEvent is not available in FlutterView
-                // The method is blocked at the FlutterTextureView level
-                
-                @Override
-                public void sendAccessibilityEvent(int eventType) {
-                    // Block all accessibility events at FlutterView level
-                    Log.d(TAG, "LockScreen FlutterView blocked sendAccessibilityEvent: " + eventType);
-                    // Do not call super to prevent the event from being sent
-                }
-            };
+            flutterView = new FlutterView(this, customTextureView);
+            
+            // Make FlutterView invisible to accessibility services
+            flutterView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            flutterView.setAccessibilityDelegate(null);
+            flutterView.setContentDescription(null);
             
             // Add surface error listener to catch surface-related crashes
             flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
@@ -277,6 +272,11 @@ public class LockScreenOverlayActivity extends Activity {
             root.setLayoutParams(new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT));
+            
+            // Make root container invisible to accessibility
+            root.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            root.setAccessibilityDelegate(null);
+            
             root.addView(flutterView, layoutParams);
 
             setContentView(root);

@@ -1124,7 +1124,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 System.setProperty("flutter.impeller.enabled", "false");
                 System.setProperty("flutter.enable-impeller", "false");
                 
-                // Simple and effective: Disable only what's necessary
+                // Simple: Just disable accessibility for overlay windows
                 System.setProperty("flutter.accessibility", "false");
                 System.setProperty("flutter.semantics", "false");
                 
@@ -1178,17 +1178,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     // The method is blocked through AccessibilityDelegate
                 };
                 
-                flutterView = new FlutterView(getApplicationContext(), customTextureView) {
-                    // Note: requestSendAccessibilityEvent is not available in FlutterView
-                    // The method is blocked at the FlutterTextureView level
-                    
-                    @Override
-                    public void sendAccessibilityEvent(int eventType) {
-                        // Block all accessibility events at FlutterView level
-                        Log.d("OverlayService", "FlutterView blocked sendAccessibilityEvent: " + eventType);
-                        // Do not call super to prevent the event from being sent
-                    }
-                };
+                flutterView = new FlutterView(getApplicationContext(), customTextureView);
                 
                 // Simple surface validation
                 isSurfaceValid.set(true);
@@ -1223,6 +1213,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.setFitsSystemWindows(true);
                 flutterView.setBackgroundColor(Color.TRANSPARENT);
                 flutterView.setOnTouchListener(this);
+                
+                // SIMPLE SOLUTION: Make overlay completely invisible to accessibility services
+                flutterView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                flutterView.setAccessibilityDelegate(null);
+                flutterView.setContentDescription(null);
+                flutterView.setFocusable(false);
+                flutterView.setFocusableInTouchMode(false);
                 
                 // CRITICAL: Apply accessibility protection AFTER engine attachment
                 try {
@@ -1300,7 +1297,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                             | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                             | WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR
-                            | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                            | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+                            | WindowManager.LayoutParams.FLAG_NOT_ACCESSIBILITY_FOCUSABLE, // CRITICAL: Disable accessibility focus
                     PixelFormat.TRANSLUCENT
             );
 
