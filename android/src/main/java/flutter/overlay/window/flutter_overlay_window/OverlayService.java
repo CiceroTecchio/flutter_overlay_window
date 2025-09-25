@@ -1198,54 +1198,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         Log.d("OverlayService", "FlutterTextureView detached - preventing semantics cleanup");
                     }
                     
-                    // CRITICAL: Override methods that might trigger semantics
-                    @Override
-                    public void requestLayout() {
-                        // Block layout requests that might trigger semantics
-                        Log.d("OverlayService", "FlutterTextureView blocked requestLayout to prevent semantics");
-                        // Don't call super to prevent semantics triggers
-                    }
-                    
-                    @Override
-                    public void invalidate() {
-                        // Block invalidate calls that might trigger semantics
-                        Log.d("OverlayService", "FlutterTextureView blocked invalidate to prevent semantics");
-                        // Don't call super to prevent semantics triggers
-                    }
+                    // Note: We don't block requestLayout and invalidate as they are needed for overlay functionality
                     
                     // Note: requestSendAccessibilityEvent is not available in FlutterTextureView
                     // The method is blocked through AccessibilityDelegate
                 };
                 
-                flutterView = new FlutterView(getApplicationContext(), customTextureView) {
-                    @Override
-                    public void requestLayout() {
-                        // Block layout requests that might trigger semantics
-                        Log.d("OverlayService", "FlutterView blocked requestLayout to prevent semantics");
-                        // Don't call super to prevent semantics triggers
-                    }
-                    
-                    @Override
-                    public void invalidate() {
-                        // Block invalidate calls that might trigger semantics
-                        Log.d("OverlayService", "FlutterView blocked invalidate to prevent semantics");
-                        // Don't call super to prevent semantics triggers
-                    }
-                    
-                    @Override
-                    public void invalidate(int l, int t, int r, int b) {
-                        // Block invalidate calls that might trigger semantics
-                        Log.d("OverlayService", "FlutterView blocked invalidate with bounds to prevent semantics");
-                        // Don't call super to prevent semantics triggers
-                    }
-                    
-                    @Override
-                    public void invalidate(Rect dirty) {
-                        // Block invalidate calls that might trigger semantics
-                        Log.d("OverlayService", "FlutterView blocked invalidate with rect to prevent semantics");
-                        // Don't call super to prevent semantics triggers
-                    }
-                };
+                flutterView = new FlutterView(getApplicationContext(), customTextureView);
                 
                 // Simple surface validation
                 isSurfaceValid.set(true);
@@ -1287,6 +1246,30 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.setContentDescription(null);
                 flutterView.setFocusable(false);
                 flutterView.setFocusableInTouchMode(false);
+                
+                // CRITICAL: Add a custom AccessibilityDelegate that prevents the specific crash
+                flutterView.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+                    @Override
+                    public void sendAccessibilityEvent(View host, int eventType) {
+                        // Block all accessibility events to prevent crashes
+                        Log.d("OverlayService", "Blocked accessibility event: " + eventType);
+                        // Don't call super to prevent the event from being sent
+                    }
+                    
+                    @Override
+                    public boolean performAccessibilityAction(View host, int action, Bundle args) {
+                        // Block all accessibility actions to prevent crashes
+                        Log.d("OverlayService", "Blocked accessibility action: " + action);
+                        return false; // Return false to indicate action was not handled
+                    }
+                    
+                    @Override
+                    public void onInitializeAccessibilityEvent(View host, AccessibilityEvent event) {
+                        // Block accessibility event initialization to prevent crashes
+                        Log.d("OverlayService", "Blocked accessibility event initialization");
+                        // Don't call super to prevent event initialization
+                    }
+                });
                 
                 // CRITICAL: Apply accessibility protection AFTER engine attachment
                 try {
