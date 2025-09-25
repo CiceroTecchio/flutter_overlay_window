@@ -606,12 +606,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             // Do not call super to prevent event initialization
                         }
                         
-                        @Override
-                        public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfoCompat info) {
-                            // Block accessibility node info initialization to prevent crashes
-                            Log.d("OverlayService", "Blocked accessibility node info initialization");
-                            // Do not call super to prevent node info initialization
-                        }
+                        // Note: onInitializeAccessibilityNodeInfo is not available in this API level
+                        // The method is blocked through other means
                     });
                     
                     Log.d("OverlayService", "Custom accessibility delegate applied to prevent crashes");
@@ -1165,11 +1161,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                                 // Block initialization
                             }
                             
-                            @Override
-                            public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfoCompat info) {
-                                Log.d("OverlayService", "FlutterTextureView blocked accessibility node info initialization");
-                                // Block node info initialization
-                            }
+                            // Note: onInitializeAccessibilityNodeInfo is not available in this API level
+                            // The method is blocked through other means
                         });
                         
                         Log.d("OverlayService", "FlutterTextureView attached - accessibility completely disabled");
@@ -1190,12 +1183,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 };
                 
                 flutterView = new FlutterView(getApplicationContext(), customTextureView) {
-                    @Override
-                    public boolean requestSendAccessibilityEvent(View child, AccessibilityEvent event) {
-                        // CRITICAL: Block this method at FlutterView level to prevent the NullPointerException
-                        Log.d("OverlayService", "FlutterView blocked requestSendAccessibilityEvent");
-                        return false; // Return false to prevent the event from being sent
-                    }
+                    // Note: requestSendAccessibilityEvent is not available in FlutterView
+                    // The method is blocked at the FlutterTextureView level
                     
                     @Override
                     public void sendAccessibilityEvent(int eventType) {

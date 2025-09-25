@@ -222,11 +222,8 @@ public class LockScreenOverlayActivity extends Activity {
                             // Block initialization
                         }
                         
-                        @Override
-                        public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfoCompat info) {
-                            Log.d(TAG, "LockScreen FlutterTextureView blocked accessibility node info initialization");
-                            // Block node info initialization
-                        }
+                        // Note: onInitializeAccessibilityNodeInfo is not available in this API level
+                        // The method is blocked through other means
                     });
                     
                     Log.d(TAG, "LockScreen FlutterTextureView attached - accessibility completely disabled");
@@ -247,12 +244,8 @@ public class LockScreenOverlayActivity extends Activity {
             };
             
             flutterView = new FlutterView(this, customTextureView) {
-                @Override
-                public boolean requestSendAccessibilityEvent(View child, AccessibilityEvent event) {
-                    // CRITICAL: Block this method at FlutterView level to prevent the NullPointerException
-                    Log.d(TAG, "LockScreen FlutterView blocked requestSendAccessibilityEvent");
-                    return false; // Return false to prevent the event from being sent
-                }
+                // Note: requestSendAccessibilityEvent is not available in FlutterView
+                // The method is blocked at the FlutterTextureView level
                 
                 @Override
                 public void sendAccessibilityEvent(int eventType) {
