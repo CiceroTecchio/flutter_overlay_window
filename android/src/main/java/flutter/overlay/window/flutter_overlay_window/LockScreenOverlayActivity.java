@@ -57,6 +57,9 @@ public class LockScreenOverlayActivity extends Activity {
         Log.d(TAG, "onCreate chamado");
         
         try {
+            // CRITICAL: Disable accessibility for the entire activity BEFORE any other setup
+            disableAccessibilityForActivity();
+            
             // Set up window flags first
             setupWindowFlags();
             
@@ -127,6 +130,50 @@ public class LockScreenOverlayActivity extends Activity {
         }
     }
 
+    /**
+     * Completely disables accessibility for the entire activity
+     * This prevents auto-click apps from interfering with the overlay
+     */
+    private void disableAccessibilityForActivity() {
+        try {
+            // Disable accessibility for the entire activity window
+            getWindow().getDecorView().setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            getWindow().getDecorView().setAccessibilityDelegate(null);
+            getWindow().getDecorView().setContentDescription(null);
+            
+            // Disable accessibility for the activity itself
+            setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            
+            // Disable accessibility for the entire view hierarchy
+            ViewGroup rootView = (ViewGroup) getWindow().getDecorView();
+            disableAccessibilityRecursively(rootView);
+            
+            Log.d(TAG, "Accessibility completely disabled for LockScreenOverlayActivity");
+        } catch (Exception e) {
+            Log.e(TAG, "Error disabling accessibility: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Recursively disables accessibility for all views in the hierarchy
+     */
+    private void disableAccessibilityRecursively(ViewGroup parent) {
+        try {
+            for (int i = 0; i < parent.getChildCount(); i++) {
+                View child = parent.getChildAt(i);
+                child.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                child.setAccessibilityDelegate(null);
+                child.setContentDescription(null);
+                
+                if (child instanceof ViewGroup) {
+                    disableAccessibilityRecursively((ViewGroup) child);
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error disabling accessibility recursively: " + e.getMessage());
+        }
+    }
+
     private void setupWindowFlags() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
@@ -138,11 +185,17 @@ public class LockScreenOverlayActivity extends Activity {
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
+            WindowManager.LayoutParams.FLAG_FULLSCREEN |
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         );
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O_MR1) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
         }
+        
+        // CRITICAL: Disable accessibility for the entire activity
+        getWindow().getDecorView().setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        getWindow().getDecorView().setAccessibilityDelegate(null);
     }
 
     private void registerCloseReceiver() {
