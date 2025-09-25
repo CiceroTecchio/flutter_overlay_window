@@ -467,32 +467,44 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     private void detectAccessibilityServices() {
         try {
+            Log.i("OverlayService", "🔍 CHECKING ACCESSIBILITY SERVICES...");
+            
+            AccessibilityManager accessibilityManager = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
+            if (accessibilityManager == null) {
+                Log.w("OverlayService", "⚠️ AccessibilityManager is null");
+                return;
+            }
+            
             java.util.List<AccessibilityServiceInfo> services = 
-                ((AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE))
-                .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+                accessibilityManager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
             
             boolean hasServices = services != null && !services.isEmpty();
             hasAccessibilityServices.set(hasServices);
             
             if (hasServices) {
-                Log.w("OverlayService", "Accessibility services detected (" + services.size() + " services) - enabling safety measures");
+                Log.w("OverlayService", "🚨 ACCESSIBILITY SERVICES DETECTED (" + services.size() + " services) - ENABLING SAFETY MEASURES");
                 accessibilitySafetyEnabled.set(true);
                 
                 // Log service names for debugging
                 for (AccessibilityServiceInfo service : services) {
                     try {
                         String serviceName = service.getResolveInfo().serviceInfo.packageName;
-                        Log.d("OverlayService", "Active accessibility service: " + serviceName);
+                        Log.w("OverlayService", "🔧 Active accessibility service: " + serviceName);
                     } catch (Exception e) {
                         Log.d("OverlayService", "Could not get service name: " + e.getMessage());
                     }
                 }
             } else {
-                Log.d("OverlayService", "No accessibility services detected");
+                Log.i("OverlayService", "✅ No accessibility services detected - overlay should be safe");
                 accessibilitySafetyEnabled.set(false);
             }
+            
+            // Also check if accessibility is enabled globally
+            boolean isAccessibilityEnabled = accessibilityManager.isEnabled();
+            Log.i("OverlayService", "🌐 Global accessibility enabled: " + isAccessibilityEnabled);
+            
         } catch (Exception e) {
-            Log.e("OverlayService", "Error detecting accessibility services: " + e.getMessage());
+            Log.e("OverlayService", "❌ Error detecting accessibility services: " + e.getMessage());
             // Assume accessibility services might be present for safety
             hasAccessibilityServices.set(true);
             accessibilitySafetyEnabled.set(true);
@@ -545,8 +557,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     private void applyAccessibilitySafetyMeasures() {
         try {
+            Log.i("OverlayService", "🛡️ APPLYING ACCESSIBILITY SAFETY MEASURES...");
+            
             if (flutterView == null) {
-                Log.w("OverlayService", "FlutterView is null, cannot apply accessibility safety measures");
+                Log.w("OverlayService", "⚠️ FlutterView is null, cannot apply accessibility safety measures");
                 return;
             }
 
@@ -555,7 +569,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
             // Apply comprehensive safety measures
             if (accessibilitySafetyEnabled.get()) {
-                Log.d("OverlayService", "Applying comprehensive accessibility safety measures");
+                Log.w("OverlayService", "🚨 APPLYING COMPREHENSIVE ACCESSIBILITY SAFETY MEASURES");
                 
                 // Disable all accessibility features that could cause conflicts
                 flutterView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
