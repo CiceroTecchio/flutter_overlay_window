@@ -296,10 +296,49 @@ public class LockScreenOverlayActivity extends Activity {
             
             flutterView = new FlutterView(this, customTextureView);
             
-            // Make FlutterView invisible to accessibility services
+            // BALANCED SOLUTION: Allow user interaction but prevent accessibility crashes
             flutterView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            flutterView.setAccessibilityDelegate(null);
             flutterView.setContentDescription(null);
+            // Keep focusable for user interaction
+            flutterView.setFocusable(true);
+            flutterView.setFocusableInTouchMode(true);
+            
+            // Add selective accessibility protection
+            flutterView.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+                @Override
+                public void sendAccessibilityEvent(View host, int eventType) {
+                    // Block only specific events that cause crashes
+                    if (eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ||
+                        eventType == AccessibilityEvent.TYPE_VIEW_SELECTED ||
+                        eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
+                        Log.d(TAG, "LockScreen blocked problematic accessibility event: " + eventType);
+                        return; // Block these specific events
+                    }
+                    // Allow other events for normal user interaction
+                    try {
+                        super.sendAccessibilityEvent(host, eventType);
+                    } catch (Exception e) {
+                        Log.d(TAG, "LockScreen caught accessibility event exception: " + e.getMessage());
+                    }
+                }
+                
+                @Override
+                public boolean performAccessibilityAction(View host, int action, Bundle args) {
+                    // Block only actions that might cause crashes
+                    if (action == AccessibilityNodeInfoCompat.ACTION_ACCESSIBILITY_FOCUS ||
+                        action == AccessibilityNodeInfoCompat.ACTION_CLEAR_ACCESSIBILITY_FOCUS) {
+                        Log.d(TAG, "LockScreen blocked problematic accessibility action: " + action);
+                        return false;
+                    }
+                    // Allow other actions for normal user interaction
+                    try {
+                        return super.performAccessibilityAction(host, action, args);
+                    } catch (Exception e) {
+                        Log.d(TAG, "LockScreen caught accessibility action exception: " + e.getMessage());
+                        return false;
+                    }
+                }
+            });
             
             // Add surface error listener to catch surface-related crashes
             flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {

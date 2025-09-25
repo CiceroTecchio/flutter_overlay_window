@@ -1240,34 +1240,57 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.setBackgroundColor(Color.TRANSPARENT);
                 flutterView.setOnTouchListener(this);
                 
-                // SIMPLE SOLUTION: Make overlay completely invisible to accessibility services
+                // BALANCED SOLUTION: Allow user interaction but prevent accessibility crashes
                 flutterView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-                flutterView.setAccessibilityDelegate(null);
                 flutterView.setContentDescription(null);
-                flutterView.setFocusable(false);
-                flutterView.setFocusableInTouchMode(false);
+                // Keep focusable for user interaction
+                flutterView.setFocusable(true);
+                flutterView.setFocusableInTouchMode(true);
                 
                 // CRITICAL: Add a custom AccessibilityDelegate that prevents the specific crash
                 flutterView.setAccessibilityDelegate(new View.AccessibilityDelegate() {
                     @Override
                     public void sendAccessibilityEvent(View host, int eventType) {
-                        // Block all accessibility events to prevent crashes
-                        Log.d("OverlayService", "Blocked accessibility event: " + eventType);
-                        // Don't call super to prevent the event from being sent
+                        // Block only specific events that cause crashes, allow others for user interaction
+                        if (eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ||
+                            eventType == AccessibilityEvent.TYPE_VIEW_SELECTED ||
+                            eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
+                            Log.d("OverlayService", "Blocked problematic accessibility event: " + eventType);
+                            return; // Block these specific events
+                        }
+                        // Allow other events for normal user interaction
+                        try {
+                            super.sendAccessibilityEvent(host, eventType);
+                        } catch (Exception e) {
+                            Log.d("OverlayService", "Caught accessibility event exception: " + e.getMessage());
+                        }
                     }
                     
                     @Override
                     public boolean performAccessibilityAction(View host, int action, Bundle args) {
-                        // Block all accessibility actions to prevent crashes
-                        Log.d("OverlayService", "Blocked accessibility action: " + action);
-                        return false; // Return false to indicate action was not handled
+                        // Block only actions that might cause crashes
+                        if (action == AccessibilityNodeInfoCompat.ACTION_ACCESSIBILITY_FOCUS ||
+                            action == AccessibilityNodeInfoCompat.ACTION_CLEAR_ACCESSIBILITY_FOCUS) {
+                            Log.d("OverlayService", "Blocked problematic accessibility action: " + action);
+                            return false;
+                        }
+                        // Allow other actions for normal user interaction
+                        try {
+                            return super.performAccessibilityAction(host, action, args);
+                        } catch (Exception e) {
+                            Log.d("OverlayService", "Caught accessibility action exception: " + e.getMessage());
+                            return false;
+                        }
                     }
                     
                     @Override
                     public void onInitializeAccessibilityEvent(View host, AccessibilityEvent event) {
-                        // Block accessibility event initialization to prevent crashes
-                        Log.d("OverlayService", "Blocked accessibility event initialization");
-                        // Don't call super to prevent event initialization
+                        // Allow initialization but catch any exceptions
+                        try {
+                            super.onInitializeAccessibilityEvent(host, event);
+                        } catch (Exception e) {
+                            Log.d("OverlayService", "Caught accessibility event initialization exception: " + e.getMessage());
+                        }
                     }
                 });
                 
