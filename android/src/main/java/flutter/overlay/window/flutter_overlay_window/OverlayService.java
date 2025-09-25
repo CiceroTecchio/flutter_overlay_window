@@ -1159,6 +1159,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 System.setProperty("flutter.disable-accessibility-features", "true");
                 System.setProperty("flutter.overlay-disable-semantics", "true");
                 
+                // CRITICAL: Disable semantics completely at JNI level
+                System.setProperty("flutter.disable-semantics-updates", "true");
+                System.setProperty("flutter.force-disable-semantics", "true");
+                System.setProperty("flutter.overlay-no-semantics", "true");
+                
                 Log.d("OverlayService", "FlutterView creation started with comprehensive safety properties set");
                 
                 // Create FlutterTextureView with additional safety
@@ -1226,6 +1231,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
                                 engine.getAccessibilityChannel().setAccessibilityMessageHandler(null);
                             }
                             
+                            // CRITICAL: Try to disable semantics updates at engine level
+                            try {
+                                // Use reflection to disable semantics if possible
+                                java.lang.reflect.Method disableSemanticsMethod = 
+                                    engine.getClass().getMethod("setSemanticsEnabled", boolean.class);
+                                disableSemanticsMethod.invoke(engine, false);
+                                Log.d("OverlayService", "Disabled semantics at engine level via reflection");
+                            } catch (Exception e) {
+                                Log.d("OverlayService", "Could not disable semantics via reflection: " + e.getMessage());
+                            }
+                            
                             // Additional engine-level safety
                             if (engine.getPlatformViewsController() != null) {
                                 Log.d("OverlayService", "Platform views controller found, applying safety measures");
@@ -1245,6 +1261,39 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.setFitsSystemWindows(true);
                 flutterView.setBackgroundColor(Color.TRANSPARENT);
                 flutterView.setOnTouchListener(this);
+                
+                // CRITICAL: Override FlutterView methods to prevent semantics crashes
+                try {
+                    // Create a custom FlutterView that blocks semantics updates
+                    FlutterView customFlutterView = new FlutterView(getApplicationContext(), textureView) {
+                        @Override
+                        public void sendAccessibilityEvent(int eventType) {
+                            // Block all accessibility events to prevent crashes
+                            Log.d("OverlayService", "Blocking FlutterView accessibility event: " + eventType);
+                            // Do nothing - block the event completely
+                        }
+                        
+                        @Override
+                        public boolean onRequestSendAccessibilityEvent(View child, AccessibilityEvent event) {
+                            // Block all accessibility events to prevent crashes
+                            Log.d("OverlayService", "Blocking FlutterView accessibility request");
+                            return false; // Block the event
+                        }
+                        
+                        @Override
+                        public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
+                            // Block accessibility event initialization
+                            Log.d("OverlayService", "Blocking FlutterView accessibility initialization");
+                            // Do nothing - block the event
+                        }
+                    };
+                    
+                    // Replace the original FlutterView with our custom one
+                    flutterView = customFlutterView;
+                    Log.d("OverlayService", "Custom FlutterView with semantics blocking created");
+                } catch (Exception e) {
+                    Log.w("OverlayService", "Could not create custom FlutterView: " + e.getMessage());
+                }
                 
                 // Apply comprehensive accessibility safety measures
                 applyAccessibilitySafetyMeasures();
