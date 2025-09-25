@@ -109,7 +109,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private BroadcastReceiver screenUnlockReceiver;
     private boolean isReceiverRegistered = false;
     private final Object lock = new Object();
-    private Handler handler = new Handler(Looper.getMainLooper());
+    // Removed handler to prevent timing issues
     private boolean sentResumeForThisUnlock = false;
 
     private BroadcastReceiver screenReceiver = new BroadcastReceiver() {
@@ -126,17 +126,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 try {
                     FlutterEngine flutterEngine = getValidEngine();
                     if (flutterEngine != null && isEngineValid(flutterEngine)) {
-                        // Add delay to ensure system is stable before resuming
-                        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                            try {
-                                if (flutterEngine.getLifecycleChannel() != null) {
-                                    flutterEngine.getLifecycleChannel().appIsResumed();
-                                    Log.d("OverlayService", "Engine lifecycle resumed after screen unlock");
-                                }
-                            } catch (Exception e) {
-                                Log.e("OverlayService", "Error resuming engine after delay: " + e.getMessage());
+                        // Resume engine immediately without delay
+                        try {
+                            if (flutterEngine.getLifecycleChannel() != null) {
+                                flutterEngine.getLifecycleChannel().appIsResumed();
+                                Log.d("OverlayService", "Engine lifecycle resumed after screen unlock");
                             }
-                        }, 500); // 500ms delay to let system stabilize
+                        } catch (Exception e) {
+                            Log.e("OverlayService", "Error resuming engine: " + e.getMessage());
+                        }
                     }
                 } catch (Exception e) {
                     Log.e("OverlayService", "Error resuming engine: " + e.getMessage());
@@ -155,24 +153,22 @@ public class OverlayService extends Service implements View.OnTouchListener {
         public void onReceive(Context context, Intent intent) {
             if (Intent.ACTION_CONFIGURATION_CHANGED.equals(intent.getAction())) {
                 Log.d("OverlayService", "Configuration change detected, updating overlay");
-                // Delay the update to let the system settle
-                new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    if (isRunning && windowManager != null && flutterView != null) {
-                        try {
-                            // Update window metrics for new configuration
-                            updateWindowMetrics();
-                            
-                            // Use safe surface operation for layout updates
-                            safeSurfaceOperation(() -> {
-                                flutterView.requestLayout();
-                                Log.d("OverlayService", "Layout requested after configuration change");
-                            }, "requestLayout after config change");
-                            
-                        } catch (Exception e) {
-                            Log.e("OverlayService", "Error handling configuration change: " + e.getMessage());
-                        }
+                // Update immediately without delay
+                if (isRunning && windowManager != null && flutterView != null) {
+                    try {
+                        // Update window metrics for new configuration
+                        updateWindowMetrics();
+                        
+                        // Use safe surface operation for layout updates
+                        safeSurfaceOperation(() -> {
+                            flutterView.requestLayout();
+                            Log.d("OverlayService", "Layout requested after configuration change");
+                        }, "requestLayout after config change");
+                        
+                    } catch (Exception e) {
+                        Log.e("OverlayService", "Error handling configuration change: " + e.getMessage());
                     }
-                }, 500);
+                }
             }
         }
     };
@@ -590,50 +586,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.setClickable(false);
                 flutterView.setLongClickable(false);
                 
-                // CRITICAL: Override accessibility methods to prevent crashes but allow auto-click to work
+                // Simple protection: Just disable accessibility for overlay
                 try {
-                    // Create a custom accessibility delegate that protects overlay but allows auto-click
-                    View.AccessibilityDelegate protectiveDelegate = new View.AccessibilityDelegate() {
-                        @Override
-                        public boolean onRequestSendAccessibilityEvent(ViewGroup host, View child, AccessibilityEvent event) {
-                            // Allow auto-click to work but protect overlay from crashes
-                            Log.d("OverlayService", "Protecting overlay from accessibility event: " + event.getEventType());
-                            
-                            // Only block events that could cause crashes, allow others
-                            if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ||
-                                event.getEventType() == AccessibilityEvent.TYPE_VIEW_SELECTED ||
-                                event.getEventType() == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
-                                Log.d("OverlayService", "Blocking potentially dangerous accessibility event");
-                                return false; // Block potentially dangerous events
-                            }
-                            
-                            // Allow other events to pass through for auto-click functionality
-                            return true;
-                        }
-                        
-                        @Override
-                        public void sendAccessibilityEvent(View host, int eventType) {
-                            // Allow auto-click to work but protect overlay
-                            Log.d("OverlayService", "Protecting overlay from accessibility event type: " + eventType);
-                            
-                            // Only block events that could cause crashes
-                            if (eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ||
-                                eventType == AccessibilityEvent.TYPE_VIEW_SELECTED ||
-                                eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
-                                Log.d("OverlayService", "Blocking potentially dangerous accessibility event");
-                                return; // Block potentially dangerous events
-                            }
-                            
-                            // Allow other events to pass through for auto-click functionality
-                            super.sendAccessibilityEvent(host, eventType);
-                        }
-                    };
-                    
-                    // Set the protective delegate
-                    flutterView.setAccessibilityDelegate(protectiveDelegate);
-                    Log.d("OverlayService", "Accessibility protective delegate set successfully");
+                    flutterView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                    flutterView.setAccessibilityDelegate(null);
+                    Log.d("OverlayService", "Disabled accessibility for overlay");
                 } catch (Exception e) {
-                    Log.w("OverlayService", "Could not set accessibility protective delegate: " + e.getMessage());
+                    Log.w("OverlayService", "Could not disable accessibility: " + e.getMessage());
                 }
                 
                 // Disable semantics at the engine level if possible
@@ -673,31 +632,29 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 return;
             }
 
-            // Add delay to prevent crashes during rapid lifecycle changes
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                try {
-                    if (engine.getLifecycleChannel() != null) {
-                        switch (state) {
-                            case "foreground":
-                            case "resumed":
-                                engine.getLifecycleChannel().appIsResumed();
-                                Log.d("OverlayService", "App resumed safely");
-                                break;
-                            case "background":
-                            case "paused":
-                                engine.getLifecycleChannel().appIsInactive();
-                                Log.d("OverlayService", "App paused safely");
-                                break;
-                            case "stopped":
-                                engine.getLifecycleChannel().appIsDetached();
-                                Log.d("OverlayService", "App detached safely");
-                                break;
-                        }
+            // Handle lifecycle changes immediately without delay
+            try {
+                if (engine.getLifecycleChannel() != null) {
+                    switch (state) {
+                        case "foreground":
+                        case "resumed":
+                            engine.getLifecycleChannel().appIsResumed();
+                            Log.d("OverlayService", "App resumed safely");
+                            break;
+                        case "background":
+                        case "paused":
+                            engine.getLifecycleChannel().appIsInactive();
+                            Log.d("OverlayService", "App paused safely");
+                            break;
+                        case "stopped":
+                            engine.getLifecycleChannel().appIsDetached();
+                            Log.d("OverlayService", "App detached safely");
+                            break;
                     }
-                } catch (Exception e) {
-                    Log.e("OverlayService", "Error handling lifecycle change " + state + ": " + e.getMessage());
                 }
-            }, 200); // 200ms delay to prevent rapid transitions
+            } catch (Exception e) {
+                Log.e("OverlayService", "Error handling lifecycle change " + state + ": " + e.getMessage());
+            }
 
         } catch (Exception e) {
             Log.e("OverlayService", "Error in handleAppLifecycleChange: " + e.getMessage());
@@ -1167,42 +1124,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 System.setProperty("flutter.impeller.enabled", "false");
                 System.setProperty("flutter.enable-impeller", "false");
                 
-                // Disable semantics to prevent crashes in overlay windows
+                // Simple and effective: Disable only what's necessary
                 System.setProperty("flutter.accessibility", "false");
                 System.setProperty("flutter.semantics", "false");
-                
-                // Additional safety properties for accessibility services
-                System.setProperty("flutter.disable-semantics", "true");
-                System.setProperty("flutter.force-disable-accessibility", "true");
-                
-                // Force disable accessibility at system level
-                System.setProperty("flutter.disable-accessibility-features", "true");
-                System.setProperty("flutter.overlay-disable-semantics", "true");
-                
-                // CRITICAL: Disable semantics completely at JNI level
-                System.setProperty("flutter.disable-semantics-updates", "true");
-                System.setProperty("flutter.force-disable-semantics", "true");
-                System.setProperty("flutter.overlay-no-semantics", "true");
-                
-                // ULTRA-CRITICAL: Disable semantics at the lowest possible level
-                System.setProperty("flutter.disable-accessibility-jni", "true");
-                System.setProperty("flutter.force-disable-semantics-jni", "true");
-                System.setProperty("flutter.overlay-disable-semantics-jni", "true");
-                System.setProperty("flutter.disable-semantics-engine", "true");
-                
-                // EXTREMELY CRITICAL: Disable semantics at the absolute lowest level
-                System.setProperty("flutter.disable-semantics-completely", "true");
-                System.setProperty("flutter.force-disable-all-semantics", "true");
-                System.setProperty("flutter.overlay-no-accessibility", "true");
-                System.setProperty("flutter.disable-semantics-updates-completely", "true");
-                
-                // NUCLEAR OPTION: Disable all accessibility features
-                System.setProperty("flutter.disable-all-accessibility", "true");
-                System.setProperty("flutter.force-disable-accessibility-completely", "true");
-                
-                // CRITICAL: Allow accessibility services to work but protect overlay
-                System.setProperty("flutter.overlay-allow-accessibility", "true");
-                System.setProperty("flutter.overlay-protect-from-accessibility", "true");
                 
                 Log.d("OverlayService", "FlutterView creation started with comprehensive safety properties set");
                 
@@ -1229,99 +1153,22 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 
                 flutterView = new FlutterView(getApplicationContext(), customTextureView);
                 
-                // Add surface error listener to catch surface-related crashes
-                flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-                    @Override
-                    public void onViewAttachedToWindow(View v) {
-                        Log.d("OverlayService", "FlutterView attached to window");
-                        isSurfaceValid.set(true);
-                        // Ensure engine is still valid when view attaches
-                        FlutterEngine engine = getValidEngine();
-                        if (engine != null && isEngineValid(engine)) {
-                            try {
-                                flutterView.attachToFlutterEngine(engine);
-                                Log.d("OverlayService", "FlutterView reattached to engine after window attach");
-                            } catch (Exception e) {
-                                Log.e("OverlayService", "Error reattaching FlutterView to engine: " + e.getMessage());
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void onViewDetachedFromWindow(View v) {
-                        Log.d("OverlayService", "FlutterView detached from window");
-                        isSurfaceValid.set(false);
-                        // Don't detach from engine here as it might be temporary
-                        // The engine detachment should only happen in onDestroy
-                    }
-                });
+                // Simple surface validation
+                isSurfaceValid.set(true);
                 
-                // Add layout listener to monitor surface changes
-                flutterView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
-                    @Override
-                    public void onLayoutChange(View v, int left, int top, int right, int bottom, 
-                                             int oldLeft, int oldTop, int oldRight, int oldBottom) {
-                        int width = right - left;
-                        int height = bottom - top;
-                        Log.d("OverlayService", "FlutterView layout changed: " + width + "x" + height);
-                        
-                        // Validate surface after layout change
-                        if (width > 0 && height > 0) {
-                            isSurfaceValid.set(true);
-                        } else {
-                            Log.w("OverlayService", "Invalid surface dimensions after layout change");
-                            isSurfaceValid.set(false);
-                        }
-                    }
-                });
+                // Simple layout handling - no complex listeners
                 
                 // Safe engine attachment with validation
                 try {
                     if (engine != null && isEngineValid(engine)) {
-                        // CRITICAL: Apply safety measures BEFORE attaching to engine
+                        // Simple safety: Just disable accessibility channel
                         try {
-                            // Disable accessibility channel completely
                             if (engine.getAccessibilityChannel() != null) {
-                                Log.d("OverlayService", "Disabling accessibility channel at engine level");
-                                // Try to disable the accessibility channel
                                 engine.getAccessibilityChannel().setAccessibilityMessageHandler(null);
-                            }
-                            
-                            // CRITICAL: Try to disable semantics updates at engine level
-                            try {
-                                // Use reflection to disable semantics if possible
-                                java.lang.reflect.Method disableSemanticsMethod = 
-                                    engine.getClass().getMethod("setSemanticsEnabled", boolean.class);
-                                disableSemanticsMethod.invoke(engine, false);
-                                Log.d("OverlayService", "Disabled semantics at engine level via reflection");
-                            } catch (Exception e) {
-                                Log.d("OverlayService", "Could not disable semantics via reflection: " + e.getMessage());
-                            }
-                            
-                            // ULTRA-CRITICAL: Try to disable semantics at JNI level
-                            try {
-                                // Try to access the FlutterJNI and disable semantics there
-                                java.lang.reflect.Field jniField = engine.getClass().getDeclaredField("flutterJNI");
-                                jniField.setAccessible(true);
-                                Object flutterJNI = jniField.get(engine);
-                                
-                                if (flutterJNI != null) {
-                                    // Try to disable semantics in FlutterJNI
-                                    java.lang.reflect.Method disableSemanticsJNIMethod = 
-                                        flutterJNI.getClass().getMethod("setSemanticsEnabled", boolean.class);
-                                    disableSemanticsJNIMethod.invoke(flutterJNI, false);
-                                    Log.d("OverlayService", "Disabled semantics at JNI level via reflection");
-                                }
-                            } catch (Exception e) {
-                                Log.d("OverlayService", "Could not disable semantics at JNI level: " + e.getMessage());
-                            }
-                            
-                            // Additional engine-level safety
-                            if (engine.getPlatformViewsController() != null) {
-                                Log.d("OverlayService", "Platform views controller found, applying safety measures");
+                                Log.d("OverlayService", "Disabled accessibility channel");
                             }
                         } catch (Exception e) {
-                            Log.w("OverlayService", "Could not disable engine-level accessibility: " + e.getMessage());
+                            Log.w("OverlayService", "Could not disable accessibility channel: " + e.getMessage());
                         }
                         
                         // NOW attach to engine after safety measures are applied
@@ -1439,45 +1286,35 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 Log.d("OverlayService", "Using WindowSetup gravity: " + WindowSetup.gravity + " (hasSpecificPosition: " + hasSpecificPosition + ", hasAlignmentOverride: " + hasAlignmentOverride + ")");
             }
 
-            // Add view with proper error handling
+            // Add view directly without delay
             try {
-                // Add a small delay to let the FlutterView settle before adding to window manager
-                new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    try {
-                        if (windowManager != null && flutterView != null && isRunning) {
-                            // Check if FlutterView is not already attached to WindowManager
-                            if (flutterView.getParent() == null) {
-                                windowManager.addView(flutterView, params);
-                                Log.d("OverlayService", "Overlay view added successfully at position: " + initialX + "," + initialY + " with gravity: " + params.gravity);
-                                
-                                // Re-apply comprehensive accessibility safety measures after view is added
-                                applyAccessibilitySafetyMeasures();
-                            } else {
-                                Log.w("OverlayService", "FlutterView already has a parent, skipping addView");
-                            }
-                        } else {
-                            Log.w("OverlayService", "Cannot add overlay view - conditions not met");
-                        }
-                    } catch (Exception e) {
-                        Log.e("OverlayService", "Failed to add overlay view: " + e.getMessage());
-                        e.printStackTrace();
-                        // Clean up on failure
-                        if (flutterView != null) {
-                            try {
-                                flutterView.detachFromFlutterEngine();
-                            } catch (Exception ex) {
-                                Log.e("OverlayService", "Error detaching flutter view: " + ex.getMessage());
-                            }
-                            flutterView = null;
-                        }
-                        windowManager = null;
-                        isRunning = false;
-                        stopSelf();
+                if (windowManager != null && flutterView != null && isRunning) {
+                    // Check if FlutterView is not already attached to WindowManager
+                    if (flutterView.getParent() == null) {
+                        windowManager.addView(flutterView, params);
+                        Log.d("OverlayService", "Overlay view added successfully at position: " + initialX + "," + initialY + " with gravity: " + params.gravity);
+                        
+                        // Apply simple accessibility safety measures
+                        applyAccessibilitySafetyMeasures();
+                    } else {
+                        Log.w("OverlayService", "FlutterView already has a parent, skipping addView");
                     }
-                }, 100); // Small delay to let FlutterView settle
+                } else {
+                    Log.w("OverlayService", "Cannot add overlay view - conditions not met");
+                }
             } catch (Exception e) {
-                Log.e("OverlayService", "Failed to schedule overlay view addition: " + e.getMessage());
+                Log.e("OverlayService", "Failed to add overlay view: " + e.getMessage());
                 e.printStackTrace();
+                // Clean up on failure
+                if (flutterView != null) {
+                    try {
+                        flutterView.detachFromFlutterEngine();
+                    } catch (Exception ex) {
+                        Log.e("OverlayService", "Error detaching flutter view: " + ex.getMessage());
+                    }
+                    flutterView = null;
+                }
+                windowManager = null;
                 isRunning = false;
                 stopSelf();
             }
