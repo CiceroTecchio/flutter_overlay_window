@@ -1164,6 +1164,12 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 System.setProperty("flutter.force-disable-semantics", "true");
                 System.setProperty("flutter.overlay-no-semantics", "true");
                 
+                // ULTRA-CRITICAL: Disable semantics at the lowest possible level
+                System.setProperty("flutter.disable-accessibility-jni", "true");
+                System.setProperty("flutter.force-disable-semantics-jni", "true");
+                System.setProperty("flutter.overlay-disable-semantics-jni", "true");
+                System.setProperty("flutter.disable-semantics-engine", "true");
+                
                 Log.d("OverlayService", "FlutterView creation started with comprehensive safety properties set");
                 
                 // Create FlutterTextureView with additional safety
@@ -1242,6 +1248,24 @@ public class OverlayService extends Service implements View.OnTouchListener {
                                 Log.d("OverlayService", "Could not disable semantics via reflection: " + e.getMessage());
                             }
                             
+                            // ULTRA-CRITICAL: Try to disable semantics at JNI level
+                            try {
+                                // Try to access the FlutterJNI and disable semantics there
+                                java.lang.reflect.Field jniField = engine.getClass().getDeclaredField("flutterJNI");
+                                jniField.setAccessible(true);
+                                Object flutterJNI = jniField.get(engine);
+                                
+                                if (flutterJNI != null) {
+                                    // Try to disable semantics in FlutterJNI
+                                    java.lang.reflect.Method disableSemanticsJNIMethod = 
+                                        flutterJNI.getClass().getMethod("setSemanticsEnabled", boolean.class);
+                                    disableSemanticsJNIMethod.invoke(flutterJNI, false);
+                                    Log.d("OverlayService", "Disabled semantics at JNI level via reflection");
+                                }
+                            } catch (Exception e) {
+                                Log.d("OverlayService", "Could not disable semantics at JNI level: " + e.getMessage());
+                            }
+                            
                             // Additional engine-level safety
                             if (engine.getPlatformViewsController() != null) {
                                 Log.d("OverlayService", "Platform views controller found, applying safety measures");
@@ -1286,11 +1310,28 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             Log.d("OverlayService", "Blocking FlutterView accessibility initialization");
                             // Do nothing - block the event
                         }
+                        
+                        // ULTRA-CRITICAL: Override the method that causes the crash
+                        @Override
+                        public void onAttachedToWindow() {
+                            super.onAttachedToWindow();
+                            // Force disable accessibility when attached
+                            setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                            setAccessibilityDelegate(null);
+                            Log.d("OverlayService", "FlutterView attached - accessibility disabled");
+                        }
+                        
+                        // Override to prevent semantics updates
+                        @Override
+                        public void onDetachedFromWindow() {
+                            // Don't call super to prevent cleanup that might trigger semantics
+                            Log.d("OverlayService", "FlutterView detached - preventing semantics cleanup");
+                        }
                     };
                     
                     // Replace the original FlutterView with our custom one
                     flutterView = customFlutterView;
-                    Log.d("OverlayService", "Custom FlutterView with semantics blocking created");
+                    Log.d("OverlayService", "Custom FlutterView with ultra-aggressive semantics blocking created");
                 } catch (Exception e) {
                     Log.w("OverlayService", "Could not create custom FlutterView: " + e.getMessage());
                 }
@@ -1651,6 +1692,22 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         "overlayMain"); // "overlayMain" is custom entry point
 
                 flutterEngine = engineGroup.createAndRunEngine(this, entryPoint);
+
+                // ULTRA-CRITICAL: Disable semantics immediately after engine creation
+                try {
+                    if (flutterEngine.getAccessibilityChannel() != null) {
+                        flutterEngine.getAccessibilityChannel().setAccessibilityMessageHandler(null);
+                        Log.d("OverlayService", "Disabled accessibility channel immediately after engine creation");
+                    }
+                    
+                    // Try to disable semantics at engine level immediately
+                    java.lang.reflect.Method disableSemanticsMethod = 
+                        flutterEngine.getClass().getMethod("setSemanticsEnabled", boolean.class);
+                    disableSemanticsMethod.invoke(flutterEngine, false);
+                    Log.d("OverlayService", "Disabled semantics immediately after engine creation");
+                } catch (Exception e) {
+                    Log.w("OverlayService", "Could not disable semantics immediately: " + e.getMessage());
+                }
 
                 // Cache the created FlutterEngine for future use
                 FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
