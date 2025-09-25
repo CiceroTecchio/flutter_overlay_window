@@ -30,6 +30,8 @@ import android.view.WindowManager;
 import android.os.Looper;
 import android.content.IntentFilter;
 import android.content.BroadcastReceiver;
+import android.accessibilityservice.AccessibilityManager;
+import android.accessibilityservice.AccessibilityServiceInfo;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
@@ -474,9 +476,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     private void detectAccessibilityServices() {
         try {
-            android.accessibilityservice.AccessibilityServiceInfo[] services = 
-                ((android.accessibilityservice.AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE))
-                .getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+            AccessibilityServiceInfo[] services = 
+                ((AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE))
+                .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
             
             boolean hasServices = services != null && services.length > 0;
             hasAccessibilityServices.set(hasServices);
@@ -486,7 +488,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 accessibilitySafetyEnabled.set(true);
                 
                 // Log service names for debugging
-                for (android.accessibilityservice.AccessibilityServiceInfo service : services) {
+                for (AccessibilityServiceInfo service : services) {
                     try {
                         String serviceName = service.getResolveInfo().serviceInfo.packageName;
                         Log.d("OverlayService", "Active accessibility service: " + serviceName);
