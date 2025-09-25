@@ -15,7 +15,6 @@ import android.app.KeyguardManager;
 import androidx.core.content.ContextCompat;
 import android.os.Handler;
 import android.content.BroadcastReceiver;
-import android.os.Looper;
 import android.content.IntentFilter;
 import android.app.AppOpsManager;
 import android.os.Binder;
