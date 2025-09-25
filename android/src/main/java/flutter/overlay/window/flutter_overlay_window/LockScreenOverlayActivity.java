@@ -187,9 +187,7 @@ public class LockScreenOverlayActivity extends Activity {
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-            WindowManager.LayoutParams.FLAG_FULLSCREEN |
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            WindowManager.LayoutParams.FLAG_FULLSCREEN
         );
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O_MR1) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
@@ -353,10 +351,12 @@ public class LockScreenOverlayActivity extends Activity {
                 }
             });
             
-            // Configure view properties
+            // Configure view properties for interaction
             flutterView.setBackgroundColor(Color.TRANSPARENT);
             flutterView.setFocusable(true);
             flutterView.setFocusableInTouchMode(true);
+            flutterView.setClickable(true);
+            flutterView.setLongClickable(true);
 
             // Create layout
             FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(pxWidth, pxHeight);
@@ -370,6 +370,11 @@ public class LockScreenOverlayActivity extends Activity {
             // Make root container invisible to accessibility
             root.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             root.setAccessibilityDelegate(null);
+            
+            // Ensure root container allows interaction
+            root.setClickable(true);
+            root.setFocusable(true);
+            root.setFocusableInTouchMode(true);
             
             root.addView(flutterView, layoutParams);
 
