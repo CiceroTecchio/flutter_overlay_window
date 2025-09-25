@@ -250,12 +250,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             }
 
                             sentResumeForThisUnlock = true;
-
-                            handler.postDelayed(() -> {
-                                synchronized (lock) {
-                                    sentResumeForThisUnlock = false;
-                                }
-                            }, 3000);
                         }
                     }
                 }
