@@ -32,47 +32,6 @@ import io.flutter.plugin.common.BasicMessageChannel;
 import io.flutter.plugin.common.JSONMessageCodec;
 import flutter.overlay.window.flutter_overlay_window.FlutterEngineManager;
 
-/**
- * Custom FlutterView that completely blocks accessibility to prevent crashes
- */
-class SafeFlutterView extends FlutterView {
-    public SafeFlutterView(Context context) {
-        super(context);
-        // Completely disable accessibility
-        setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        setContentDescription(null);
-        setAccessibilityDelegate(null);
-    }
-    
-    @Override
-    public void sendAccessibilityEvent(int eventType) {
-        // Block ALL accessibility events
-        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility event: " + eventType);
-        return; // Block all events
-    }
-    
-    @Override
-    public boolean performAccessibilityAction(int action, Bundle arguments) {
-        // Block ALL accessibility actions
-        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility action: " + action);
-        return false; // Block all actions
-    }
-    
-    @Override
-    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
-        // Block initialization
-        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility event initialization");
-        return; // Block initialization
-    }
-    
-    @Override
-    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
-        // Block node info initialization
-        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility node info initialization");
-        return; // Block initialization
-    }
-}
-
 public class LockScreenOverlayActivity extends Activity {
     private FlutterView flutterView;
     private FlutterEngine flutterEngine;
