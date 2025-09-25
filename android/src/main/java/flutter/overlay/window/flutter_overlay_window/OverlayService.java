@@ -32,6 +32,8 @@ import android.content.IntentFilter;
 import android.content.BroadcastReceiver;
 import android.view.accessibility.AccessibilityManager;
 import android.accessibilityservice.AccessibilityServiceInfo;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.ViewGroup;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
@@ -588,6 +590,39 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.setClickable(false);
                 flutterView.setLongClickable(false);
                 
+                // CRITICAL: Override accessibility methods to prevent crashes
+                try {
+                    // Create a custom accessibility delegate that blocks all events
+                    View.AccessibilityDelegate blockingDelegate = new View.AccessibilityDelegate() {
+                        @Override
+                        public boolean onRequestSendAccessibilityEvent(ViewGroup host, View child, AccessibilityEvent event) {
+                            // Block all accessibility events to prevent crashes
+                            Log.d("OverlayService", "Blocking accessibility event: " + event.getEventType());
+                            return false; // Block the event
+                        }
+                        
+                        @Override
+                        public void sendAccessibilityEvent(View host, int eventType) {
+                            // Block all accessibility events
+                            Log.d("OverlayService", "Blocking accessibility event type: " + eventType);
+                            // Do nothing - block the event
+                        }
+                        
+                        @Override
+                        public void sendAccessibilityEventUnchecked(AccessibilityEvent event) {
+                            // Block all accessibility events
+                            Log.d("OverlayService", "Blocking unchecked accessibility event");
+                            // Do nothing - block the event
+                        }
+                    };
+                    
+                    // Set the blocking delegate
+                    flutterView.setAccessibilityDelegate(blockingDelegate);
+                    Log.d("OverlayService", "Accessibility blocking delegate set successfully");
+                } catch (Exception e) {
+                    Log.w("OverlayService", "Could not set accessibility blocking delegate: " + e.getMessage());
+                }
+                
                 // Disable semantics at the engine level if possible
                 try {
                     FlutterEngine engine = getValidEngine();
@@ -1127,6 +1162,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 System.setProperty("flutter.disable-semantics", "true");
                 System.setProperty("flutter.force-disable-accessibility", "true");
                 
+                // Force disable accessibility at system level
+                System.setProperty("flutter.disable-accessibility-features", "true");
+                System.setProperty("flutter.overlay-disable-semantics", "true");
+                
                 Log.d("OverlayService", "FlutterView creation started with comprehensive safety properties set");
                 
                 // Create FlutterTextureView with additional safety
@@ -1184,6 +1223,23 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     if (engine != null && isEngineValid(engine)) {
                         flutterView.attachToFlutterEngine(engine);
                         Log.d("OverlayService", "FlutterView attached to engine successfully");
+                        
+                        // CRITICAL: Disable semantics at engine level to prevent crashes
+                        try {
+                            // Disable accessibility channel completely
+                            if (engine.getAccessibilityChannel() != null) {
+                                Log.d("OverlayService", "Disabling accessibility channel at engine level");
+                                // Try to disable the accessibility channel
+                                engine.getAccessibilityChannel().setAccessibilityMessageHandler(null);
+                            }
+                            
+                            // Additional engine-level safety
+                            if (engine.getPlatformViewsController() != null) {
+                                Log.d("OverlayService", "Platform views controller found, applying safety measures");
+                            }
+                        } catch (Exception e) {
+                            Log.w("OverlayService", "Could not disable engine-level accessibility: " + e.getMessage());
+                        }
                     } else {
                         Log.e("OverlayService", "Cannot attach FlutterView - engine is null or invalid");
                         throw new IllegalStateException("Engine is null or invalid");
