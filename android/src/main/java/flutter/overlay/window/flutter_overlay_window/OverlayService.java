@@ -1205,7 +1205,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     // The method is blocked through AccessibilityDelegate
                 };
                 
-                flutterView = new SafeFlutterView(getApplicationContext());
+                flutterView = new SafeFlutterView(getApplicationContext(), customTextureView);
                 
                 // Simple surface validation
                 isSurfaceValid.set(true);

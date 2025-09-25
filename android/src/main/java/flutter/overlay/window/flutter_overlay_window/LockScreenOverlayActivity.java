@@ -297,7 +297,7 @@ public class LockScreenOverlayActivity extends Activity {
                 // The method is blocked through AccessibilityDelegate
             };
             
-            flutterView = new SafeFlutterView(this);
+            flutterView = new SafeFlutterView(this, customTextureView);
             
             // BALANCED SOLUTION: Allow user interaction but prevent accessibility crashes
             flutterView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
