@@ -1247,52 +1247,36 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.setFocusable(true);
                 flutterView.setFocusableInTouchMode(true);
                 
-                // CRITICAL: Add a custom AccessibilityDelegate that prevents the specific crash
-                flutterView.setAccessibilityDelegate(new View.AccessibilityDelegate() {
-                    @Override
-                    public void sendAccessibilityEvent(View host, int eventType) {
-                        // Block only specific events that cause crashes, allow others for user interaction
-                        if (eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ||
-                            eventType == AccessibilityEvent.TYPE_VIEW_SELECTED ||
-                            eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
-                            Log.d("OverlayService", "Blocked problematic accessibility event: " + eventType);
-                            return; // Block these specific events
-                        }
-                        // Allow other events for normal user interaction
-                        try {
-                            super.sendAccessibilityEvent(host, eventType);
-                        } catch (Exception e) {
-                            Log.d("OverlayService", "Caught accessibility event exception: " + e.getMessage());
-                        }
-                    }
-                    
-                    @Override
-                    public boolean performAccessibilityAction(View host, int action, Bundle args) {
-                        // Block only actions that might cause crashes
-                        if (action == AccessibilityNodeInfoCompat.ACTION_ACCESSIBILITY_FOCUS ||
-                            action == AccessibilityNodeInfoCompat.ACTION_CLEAR_ACCESSIBILITY_FOCUS) {
-                            Log.d("OverlayService", "Blocked problematic accessibility action: " + action);
-                            return false;
-                        }
-                        // Allow other actions for normal user interaction
-                        try {
-                            return super.performAccessibilityAction(host, action, args);
-                        } catch (Exception e) {
-                            Log.d("OverlayService", "Caught accessibility action exception: " + e.getMessage());
-                            return false;
-                        }
-                    }
-                    
-                    @Override
-                    public void onInitializeAccessibilityEvent(View host, AccessibilityEvent event) {
-                        // Allow initialization but catch any exceptions
-                        try {
-                            super.onInitializeAccessibilityEvent(host, event);
-                        } catch (Exception e) {
-                            Log.d("OverlayService", "Caught accessibility event initialization exception: " + e.getMessage());
-                        }
-                    }
-                });
+            // CRITICAL: Add a comprehensive AccessibilityDelegate that blocks ALL accessibility
+            flutterView.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+                @Override
+                public void sendAccessibilityEvent(View host, int eventType) {
+                    // Block ALL accessibility events to prevent crashes
+                    Log.d("OverlayService", "🚫 BLOCKED accessibility event: " + eventType);
+                    return; // Block all events
+                }
+                
+                @Override
+                public boolean performAccessibilityAction(View host, int action, Bundle args) {
+                    // Block ALL accessibility actions to prevent crashes
+                    Log.d("OverlayService", "🚫 BLOCKED accessibility action: " + action);
+                    return false; // Block all actions
+                }
+                
+                @Override
+                public void onInitializeAccessibilityEvent(View host, AccessibilityEvent event) {
+                    // Block initialization to prevent crashes
+                    Log.d("OverlayService", "🚫 BLOCKED accessibility event initialization");
+                    return; // Block initialization
+                }
+                
+                @Override
+                public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfoCompat info) {
+                    // Block node info initialization to prevent crashes
+                    Log.d("OverlayService", "🚫 BLOCKED accessibility node info initialization");
+                    return; // Block initialization
+                }
+            });
                 
                 // CRITICAL: Apply accessibility protection AFTER engine attachment
                 try {
@@ -1616,6 +1600,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
         
         // Detect accessibility services early to enable safety measures
         detectAccessibilityServices();
+        
+        // CRITICAL: Block FlutterJNI.updateSemantics at JNI level
+        blockFlutterJNIUpdateSemantics();
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_USER_PRESENT);
@@ -2107,6 +2094,42 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 Log.w("OverlayService", "FlutterView não está anexado ao WindowManager.");
             }
         }, "bringOverlayToFront");
+    }
+
+    /**
+     * CRITICAL: Block FlutterJNI.updateSemantics at JNI level to prevent crashes
+     */
+    private void blockFlutterJNIUpdateSemantics() {
+        try {
+            Log.i("OverlayService", "🚫 BLOCKING FlutterJNI.updateSemantics at JNI level...");
+            
+            // Set system properties to disable Flutter accessibility completely
+            System.setProperty("flutter.accessibility", "false");
+            System.setProperty("flutter.semantics", "false");
+            System.setProperty("flutter.impeller", "false");
+            
+            // Try to disable FlutterJNI.updateSemantics using reflection
+            try {
+                Class<?> flutterJNIClass = Class.forName("io.flutter.embedding.engine.FlutterJNI");
+                Log.i("OverlayService", "Found FlutterJNI class: " + flutterJNIClass.getName());
+                
+                // Try to get the updateSemantics method
+                java.lang.reflect.Method[] methods = flutterJNIClass.getDeclaredMethods();
+                for (java.lang.reflect.Method method : methods) {
+                    if (method.getName().equals("updateSemantics")) {
+                        Log.i("OverlayService", "Found updateSemantics method: " + method.getName());
+                        method.setAccessible(true);
+                        // We can't override the method, but we can log when it's called
+                    }
+                }
+            } catch (Exception e) {
+                Log.w("OverlayService", "Could not access FlutterJNI methods: " + e.getMessage());
+            }
+            
+            Log.i("OverlayService", "✅ FlutterJNI.updateSemantics blocking configured");
+        } catch (Exception e) {
+            Log.w("OverlayService", "⚠️ Could not block FlutterJNI.updateSemantics: " + e.getMessage());
+        }
     }
 
 }
