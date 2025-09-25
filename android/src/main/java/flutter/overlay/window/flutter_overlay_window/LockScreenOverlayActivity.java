@@ -17,6 +17,9 @@ import android.view.Gravity;
 import android.view.View;
 import android.content.res.Resources;
 import android.widget.FrameLayout;
+import android.os.Bundle;
+import android.view.accessibility.AccessibilityEvent;
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 import flutter.overlay.window.flutter_overlay_window.WindowSetup;
 import io.flutter.embedding.android.FlutterView;
 import io.flutter.embedding.android.FlutterTextureView;
@@ -191,8 +194,73 @@ public class LockScreenOverlayActivity extends Activity {
                 }
             }
 
-            // Create FlutterView with error handling
-            flutterView = new FlutterView(this, new FlutterTextureView(this));
+            // Create FlutterView with comprehensive accessibility protection
+            FlutterTextureView customTextureView = new FlutterTextureView(this) {
+                @Override
+                public void onAttachedToWindow() {
+                    super.onAttachedToWindow();
+                    // Force disable accessibility when attached
+                    setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                    
+                    // Apply custom accessibility delegate to prevent crashes
+                    setAccessibilityDelegate(new View.AccessibilityDelegate() {
+                        @Override
+                        public void sendAccessibilityEvent(View host, int eventType) {
+                            Log.d(TAG, "LockScreen FlutterTextureView blocked accessibility event: " + eventType);
+                            // Block all events
+                        }
+                        
+                        @Override
+                        public boolean performAccessibilityAction(View host, int action, Bundle args) {
+                            Log.d(TAG, "LockScreen FlutterTextureView blocked accessibility action: " + action);
+                            return false;
+                        }
+                        
+                        @Override
+                        public void onInitializeAccessibilityEvent(View host, AccessibilityEvent event) {
+                            Log.d(TAG, "LockScreen FlutterTextureView blocked accessibility event initialization");
+                            // Block initialization
+                        }
+                        
+                        @Override
+                        public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfoCompat info) {
+                            Log.d(TAG, "LockScreen FlutterTextureView blocked accessibility node info initialization");
+                            // Block node info initialization
+                        }
+                    });
+                    
+                    Log.d(TAG, "LockScreen FlutterTextureView attached - accessibility completely disabled");
+                }
+                
+                @Override
+                public void onDetachedFromWindow() {
+                    // Don't call super to prevent cleanup that might trigger semantics
+                    Log.d(TAG, "LockScreen FlutterTextureView detached - preventing semantics cleanup");
+                }
+                
+                @Override
+                public boolean requestSendAccessibilityEvent(View child, AccessibilityEvent event) {
+                    // CRITICAL: Block this method to prevent the NullPointerException
+                    Log.d(TAG, "LockScreen FlutterTextureView blocked requestSendAccessibilityEvent");
+                    return false; // Return false to prevent the event from being sent
+                }
+            };
+            
+            flutterView = new FlutterView(this, customTextureView) {
+                @Override
+                public boolean requestSendAccessibilityEvent(View child, AccessibilityEvent event) {
+                    // CRITICAL: Block this method at FlutterView level to prevent the NullPointerException
+                    Log.d(TAG, "LockScreen FlutterView blocked requestSendAccessibilityEvent");
+                    return false; // Return false to prevent the event from being sent
+                }
+                
+                @Override
+                public void sendAccessibilityEvent(int eventType) {
+                    // Block all accessibility events at FlutterView level
+                    Log.d(TAG, "LockScreen FlutterView blocked sendAccessibilityEvent: " + eventType);
+                    // Do not call super to prevent the event from being sent
+                }
+            };
             
             // Add surface error listener to catch surface-related crashes
             flutterView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
