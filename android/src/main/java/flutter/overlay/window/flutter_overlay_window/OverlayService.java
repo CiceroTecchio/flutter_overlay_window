@@ -30,7 +30,7 @@ import android.view.WindowManager;
 import android.os.Looper;
 import android.content.IntentFilter;
 import android.content.BroadcastReceiver;
-import android.accessibilityservice.AccessibilityManager;
+import android.view.accessibility.AccessibilityManager;
 import android.accessibilityservice.AccessibilityServiceInfo;
 
 import androidx.annotation.Nullable;
