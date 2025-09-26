@@ -85,66 +85,10 @@ public class SafeFlutterView extends FlutterView {
     }
     
     @Override
-    public boolean isShown(View view) {
-        // CRITICAL: Block isShown() for any view to prevent accessibility crashes
-        Log.d("SafeFlutterView", "🚫 BLOCKED isShown(View) to prevent accessibility crash");
-        return false; // Always return false to prevent accessibility events
-    }
-    
-    @Override
-    public void sendAccessibilityEvent(int eventType) {
-        // Block ALL accessibility events at the view level
-        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility event: " + eventType);
-        return; // Block all events
-    }
-    
-    @Override
-    public boolean performAccessibilityAction(int action, Bundle arguments) {
-        // Block ALL accessibility actions at the view level
-        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility action: " + action);
-        return false; // Block all actions
-    }
-    
-    @Override
-    public void onInitializeAccessibilityEvent(AccessibilityEvent event) {
-        // Block ALL accessibility event initialization
-        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility event initialization");
-        return; // Block initialization
-    }
-    
-    @Override
-    public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
-        // Block ALL accessibility node info initialization
-        Log.d("SafeFlutterView", "🚫 BLOCKED accessibility node info initialization");
-        return; // Block initialization
-    }
-    
-    @Override
-    public boolean requestSendAccessibilityEvent(View child, AccessibilityEvent event) {
-        // CRITICAL: Block requestSendAccessibilityEvent to prevent NullPointerException
-        Log.d("SafeFlutterView", "🚫 BLOCKED requestSendAccessibilityEvent to prevent crash");
-        return false; // Block the request
-    }
-    
-    @Override
-    public void sendAccessibilityEventUnchecked(AccessibilityEvent event) {
-        // Block ALL accessibility events at the view level
-        Log.d("SafeFlutterView", "🚫 BLOCKED sendAccessibilityEventUnchecked");
-        return; // Block all events
-    }
-    
-    @Override
-    public void sendAccessibilityEventUncheckedInternal(AccessibilityEvent event) {
-        // CRITICAL: Block the internal method that causes the crash
-        Log.d("SafeFlutterView", "🚫 BLOCKED sendAccessibilityEventUncheckedInternal to prevent crash");
-        return; // Block the internal method
-    }
-    
-    @Override
-    public void dispatchPopulateAccessibilityEvent(AccessibilityEvent event) {
+    public boolean dispatchPopulateAccessibilityEvent(AccessibilityEvent event) {
         // Block accessibility event population
         Log.d("SafeFlutterView", "🚫 BLOCKED dispatchPopulateAccessibilityEvent");
-        return; // Block population
+        return false; // Block population
     }
     
     @Override
