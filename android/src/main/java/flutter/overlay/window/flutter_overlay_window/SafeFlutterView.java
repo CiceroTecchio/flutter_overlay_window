@@ -70,23 +70,9 @@ public class SafeFlutterView extends FlutterView {
     }
     
     @Override
-    public void sendAccessibilityEvent(int eventType) {
-        // Block ALL accessibility events at the view level
-        Log.d("SafeFlutterView", "🚫 BLOCKED sendAccessibilityEvent: " + eventType);
-        return; // Block all events
-    }
-    
-    @Override
     public void sendAccessibilityEventUnchecked(AccessibilityEvent event) {
         // Block ALL accessibility events at the view level
         Log.d("SafeFlutterView", "🚫 BLOCKED sendAccessibilityEventUnchecked");
         return; // Block all events
-    }
-    
-    @Override
-    public boolean performAccessibilityAction(int action, Bundle arguments) {
-        // Block ALL accessibility actions at the view level
-        Log.d("SafeFlutterView", "🚫 BLOCKED performAccessibilityAction: " + action);
-        return false; // Block all actions
     }
 }
