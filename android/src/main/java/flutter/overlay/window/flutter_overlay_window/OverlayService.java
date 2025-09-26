@@ -2166,7 +2166,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     
             // CRITICAL: Intercept updateSemantics method directly
             try {
-                interceptUpdateSemanticsMethod(flutterJNI, flutterEngine);
+                interceptUpdateSemanticsMethod(flutterJNI, engine);
                 Log.i("OverlayService", "✅ Intercepted updateSemantics method");
             } catch (Exception e) {
                 Log.w("OverlayService", "⚠️ Could not intercept updateSemantics: " + e.getMessage());
@@ -2182,7 +2182,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             
             // FINAL NUCLEAR OPTION: Completely disable accessibility at the engine level
             try {
-                disableAccessibilityCompletely(flutterEngine);
+                disableAccessibilityCompletely(engine);
                 Log.i("OverlayService", "✅ Accessibility completely disabled");
             } catch (Exception e) {
                 Log.w("OverlayService", "⚠️ Could not disable accessibility completely: " + e.getMessage());
