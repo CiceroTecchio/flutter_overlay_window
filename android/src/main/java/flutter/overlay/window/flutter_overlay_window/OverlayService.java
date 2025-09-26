@@ -639,6 +639,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             // Do not call super to prevent event initialization
                         }
                         
+                        @Override
+                        public boolean requestSendAccessibilityEvent(View host, View child, AccessibilityEvent event) {
+                            // CRITICAL: Block requestSendAccessibilityEvent to prevent NullPointerException
+                            Log.d("OverlayService", "🚫 BLOCKED requestSendAccessibilityEvent to prevent crash");
+                            return false; // Block the request
+                        }
+                        
                         // Note: onInitializeAccessibilityNodeInfo is not available in this API level
                         // The method is blocked through other means
                     });
@@ -1203,6 +1210,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                                 // Block initialization
                             }
                             
+                            @Override
+                            public boolean requestSendAccessibilityEvent(View host, View child, AccessibilityEvent event) {
+                                // CRITICAL: Block requestSendAccessibilityEvent to prevent NullPointerException
+                                Log.d("OverlayService", "🚫 FlutterTextureView BLOCKED requestSendAccessibilityEvent to prevent crash");
+                                return false; // Block the request
+                            }
+                            
                             // Note: onInitializeAccessibilityNodeInfo is not available in this API level
                             // The method is blocked through other means
                         });
@@ -1286,6 +1300,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     // Block initialization to prevent crashes
                     Log.d("OverlayService", "🚫 BLOCKED accessibility event initialization");
                     return; // Block initialization
+                }
+                
+                @Override
+                public boolean requestSendAccessibilityEvent(View host, View child, AccessibilityEvent event) {
+                    // CRITICAL: Block requestSendAccessibilityEvent to prevent NullPointerException
+                    Log.d("OverlayService", "🚫 BLOCKED requestSendAccessibilityEvent to prevent crash");
+                    return false; // Block the request
                 }
                 
                 // Note: onInitializeAccessibilityNodeInfo is not available in base AccessibilityDelegate

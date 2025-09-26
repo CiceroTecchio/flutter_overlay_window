@@ -61,4 +61,11 @@ public class SafeFlutterView extends FlutterView {
         Log.d("SafeFlutterView", "🚫 BLOCKED accessibility node info initialization");
         return; // Block initialization
     }
+    
+    @Override
+    public boolean requestSendAccessibilityEvent(View child, AccessibilityEvent event) {
+        // CRITICAL: Block requestSendAccessibilityEvent to prevent NullPointerException
+        Log.d("SafeFlutterView", "🚫 BLOCKED requestSendAccessibilityEvent to prevent crash");
+        return false; // Block the request
+    }
 }

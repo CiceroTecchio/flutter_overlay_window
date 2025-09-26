@@ -329,6 +329,13 @@ public class LockScreenOverlayActivity extends Activity {
                     return; // Block initialization
                 }
                 
+                @Override
+                public boolean requestSendAccessibilityEvent(View host, View child, AccessibilityEvent event) {
+                    // CRITICAL: Block requestSendAccessibilityEvent to prevent NullPointerException
+                    Log.d(TAG, "🚫 LockScreen BLOCKED requestSendAccessibilityEvent to prevent crash");
+                    return false; // Block the request
+                }
+                
                 // Note: onInitializeAccessibilityNodeInfo is not available in base AccessibilityDelegate
                 // This method is handled by the AccessibilityDelegate framework
             });
