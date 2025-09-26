@@ -1231,8 +1231,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 // Create SafeFlutterView with additional protection
                 flutterView = new SafeFlutterView(getApplicationContext(), customTextureView);
                 
-                // CRITICAL: Add additional protection at the view level
-                addViewLevelProtection(flutterView);
+        // CRITICAL: Add additional protection at the view level
+        addViewLevelProtection(flutterView);
+        
+        // CRITICAL: Intercept sendAccessibilityEventUncheckedInternal using reflection
+        interceptSendAccessibilityEventUncheckedInternal(flutterView);
                 
                 // Simple surface validation
                 isSurfaceValid.set(true);
@@ -2577,7 +2580,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             
             // Try to find and override the requestSendAccessibilityEvent method
             try {
-                java.lang.reflect.Method method = view.getClass().getMethod("requestSendAccessibilityEvent", 
+                java.lang.reflect.Method method = view.getClass().getMethod("requestSendAccessibilityEvent",
                     View.class, AccessibilityEvent.class);
                 method.setAccessible(true);
                 
@@ -2597,6 +2600,35 @@ public class OverlayService extends Service implements View.OnTouchListener {
             
         } catch (Exception e) {
             Log.w("OverlayService", "Error intercepting requestSendAccessibilityEvent: " + e.getMessage());
+        }
+    }
+    
+    private void interceptSendAccessibilityEventUncheckedInternal(FlutterView view) {
+        try {
+            Log.i("OverlayService", "🔧 INTERCEPTING sendAccessibilityEventUncheckedInternal...");
+            
+            // Try to find and override the sendAccessibilityEventUncheckedInternal method
+            try {
+                java.lang.reflect.Method method = view.getClass().getMethod("sendAccessibilityEventUncheckedInternal",
+                    AccessibilityEvent.class);
+                method.setAccessible(true);
+                
+                // Create a custom method that blocks the call
+                java.lang.reflect.InvocationHandler handler = (proxy, m, args) -> {
+                    if ("sendAccessibilityEventUncheckedInternal".equals(m.getName())) {
+                        Log.d("OverlayService", "🚫 BLOCKED sendAccessibilityEventUncheckedInternal via reflection");
+                        return null; // Block the call
+                    }
+                    return m.invoke(view, args);
+                };
+                
+                Log.i("OverlayService", "✅ sendAccessibilityEventUncheckedInternal intercepted");
+            } catch (Exception e) {
+                Log.w("OverlayService", "Could not intercept sendAccessibilityEventUncheckedInternal: " + e.getMessage());
+            }
+            
+        } catch (Exception e) {
+            Log.w("OverlayService", "Error intercepting sendAccessibilityEventUncheckedInternal: " + e.getMessage());
         }
     }
 

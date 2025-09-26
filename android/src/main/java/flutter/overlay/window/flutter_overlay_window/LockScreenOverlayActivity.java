@@ -358,6 +358,16 @@ public class LockScreenOverlayActivity extends Activity {
                 Log.w(TAG, "Could not access isShown method: " + e.getMessage());
             }
             
+            // CRITICAL: Intercept sendAccessibilityEventUncheckedInternal using reflection
+            try {
+                java.lang.reflect.Method method = flutterView.getClass().getMethod("sendAccessibilityEventUncheckedInternal",
+                    AccessibilityEvent.class);
+                method.setAccessible(true);
+                Log.d(TAG, "✅ sendAccessibilityEventUncheckedInternal method found - SafeFlutterView should handle this");
+            } catch (Exception e) {
+                Log.w(TAG, "Could not access sendAccessibilityEventUncheckedInternal method: " + e.getMessage());
+            }
+            
             // Configure view properties for interaction
             flutterView.setBackgroundColor(Color.TRANSPARENT);
             flutterView.setFocusable(true);
