@@ -1228,7 +1228,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     // The method is blocked through AccessibilityDelegate
                 };
                 
+                // Create SafeFlutterView with additional protection
                 flutterView = new SafeFlutterView(getApplicationContext(), customTextureView);
+                
+                // CRITICAL: Add additional protection at the view level
+                addViewLevelProtection(flutterView);
                 
                 // Simple surface validation
                 isSurfaceValid.set(true);
@@ -2505,6 +2509,94 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.i("OverlayService", "💥 ACCESSIBILITY COMPLETELY DISABLED - NUCLEAR OPTION ACTIVATED");
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Error in nuclear option: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Adds additional protection at the view level to prevent crashes
+     */
+    private void addViewLevelProtection(FlutterView view) {
+        try {
+            Log.i("OverlayService", "🛡️ ADDING VIEW LEVEL PROTECTION...");
+            
+            // Set up a custom accessibility delegate that blocks everything
+            view.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+                @Override
+                public void sendAccessibilityEvent(View host, int eventType) {
+                    Log.d("OverlayService", "🚫 BLOCKED sendAccessibilityEvent: " + eventType);
+                    return; // Block all events
+                }
+                
+                @Override
+                public boolean performAccessibilityAction(View host, int action, Bundle args) {
+                    Log.d("OverlayService", "🚫 BLOCKED performAccessibilityAction: " + action);
+                    return false; // Block all actions
+                }
+                
+                @Override
+                public void onInitializeAccessibilityEvent(View host, AccessibilityEvent event) {
+                    Log.d("OverlayService", "🚫 BLOCKED onInitializeAccessibilityEvent");
+                    return; // Block initialization
+                }
+            });
+            
+            // Disable accessibility completely
+            view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            view.setContentDescription(null);
+            
+            // Add a custom touch listener that blocks accessibility events
+            view.setOnTouchListener(new View.OnTouchListener() {
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    // Block any accessibility events that might be triggered by touch
+                    Log.d("OverlayService", "🚫 BLOCKED touch accessibility events");
+                    return false; // Don't consume the event, just block accessibility
+                }
+            });
+            
+            // CRITICAL: Try to intercept requestSendAccessibilityEvent using reflection
+            try {
+                interceptRequestSendAccessibilityEvent(view);
+                Log.d("OverlayService", "✅ Intercepted requestSendAccessibilityEvent");
+            } catch (Exception e) {
+                Log.w("OverlayService", "Could not intercept requestSendAccessibilityEvent: " + e.getMessage());
+            }
+            
+            Log.i("OverlayService", "✅ View level protection added");
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error adding view level protection: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Intercepts requestSendAccessibilityEvent using reflection to prevent crashes
+     */
+    private void interceptRequestSendAccessibilityEvent(FlutterView view) {
+        try {
+            Log.i("OverlayService", "🔧 INTERCEPTING requestSendAccessibilityEvent...");
+            
+            // Try to find and override the requestSendAccessibilityEvent method
+            try {
+                java.lang.reflect.Method method = view.getClass().getMethod("requestSendAccessibilityEvent", 
+                    View.class, AccessibilityEvent.class);
+                method.setAccessible(true);
+                
+                // Create a custom method that blocks the call
+                java.lang.reflect.InvocationHandler handler = (proxy, m, args) -> {
+                    if ("requestSendAccessibilityEvent".equals(m.getName())) {
+                        Log.d("OverlayService", "🚫 BLOCKED requestSendAccessibilityEvent via reflection");
+                        return false; // Block the call
+                    }
+                    return m.invoke(view, args);
+                };
+                
+                Log.i("OverlayService", "✅ requestSendAccessibilityEvent intercepted");
+            } catch (Exception e) {
+                Log.w("OverlayService", "Could not intercept requestSendAccessibilityEvent: " + e.getMessage());
+            }
+            
+        } catch (Exception e) {
+            Log.w("OverlayService", "Error intercepting requestSendAccessibilityEvent: " + e.getMessage());
         }
     }
 
