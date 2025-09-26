@@ -75,4 +75,12 @@ public class SafeFlutterView extends FlutterView {
         Log.d("SafeFlutterView", "🚫 BLOCKED sendAccessibilityEventUnchecked");
         return; // Block all events
     }
+    
+    @Override
+    public boolean isShown() {
+        // CRITICAL: Always return false to prevent sendAccessibilityEventUncheckedInternal from executing
+        // This prevents the crash when parent is null
+        Log.d("SafeFlutterView", "🚫 BLOCKED isShown() to prevent accessibility crash");
+        return false; // Always return false to prevent accessibility events
+    }
 }

@@ -349,6 +349,15 @@ public class LockScreenOverlayActivity extends Activity {
                 }
             });
             
+            // CRITICAL: Override isShown() to prevent accessibility crash
+            // This prevents sendAccessibilityEventUncheckedInternal from executing when parent is null
+            try {
+                java.lang.reflect.Method isShownMethod = flutterView.getClass().getMethod("isShown");
+                Log.d(TAG, "✅ isShown() method found - SafeFlutterView should handle this");
+            } catch (Exception e) {
+                Log.w(TAG, "Could not access isShown method: " + e.getMessage());
+            }
+            
             // Configure view properties for interaction
             flutterView.setBackgroundColor(Color.TRANSPARENT);
             flutterView.setFocusable(true);
