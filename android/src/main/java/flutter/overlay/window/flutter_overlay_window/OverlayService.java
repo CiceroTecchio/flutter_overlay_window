@@ -2127,19 +2127,56 @@ public class OverlayService extends Service implements View.OnTouchListener {
             
             // Try to disable semantics using reflection at engine level
             try {
-                java.lang.reflect.Method disableSemanticsMethod = 
-                    engine.getClass().getMethod("setSemanticsEnabled", boolean.class);
-                disableSemanticsMethod.invoke(engine, false);
-                Log.d("OverlayService", "Disabled semantics at engine level");
+                // Try multiple possible method names for different Flutter versions
+                String[] possibleMethods = {"setSemanticsEnabled", "disableSemantics", "setAccessibilityEnabled"};
+                boolean methodFound = false;
+                
+                for (String methodName : possibleMethods) {
+                    try {
+                        java.lang.reflect.Method disableSemanticsMethod = 
+                            engine.getClass().getMethod(methodName, boolean.class);
+                        disableSemanticsMethod.invoke(engine, false);
+                        Log.d("OverlayService", "Disabled semantics at engine level using method: " + methodName);
+                        methodFound = true;
+                        break;
+                    } catch (Exception e) {
+                        // Try next method
+                    }
+                }
+                
+                if (!methodFound) {
+                    Log.w("OverlayService", "Could not find semantics disabling method in engine");
+                }
             } catch (Exception e) {
                 Log.w("OverlayService", "Could not disable semantics at engine level: " + e.getMessage());
             }
             
             // Try to access FlutterJNI and disable semantics there
             try {
-                java.lang.reflect.Field jniField = engine.getClass().getDeclaredField("flutterJNI");
-                jniField.setAccessible(true);
-                Object flutterJNI = jniField.get(engine);
+                // Try multiple possible field names for different Flutter versions
+                String[] possibleFields = {"flutterJNI", "jni", "nativeJNI", "mFlutterJNI"};
+                Object flutterJNI = null;
+                boolean fieldFound = false;
+                
+                for (String fieldName : possibleFields) {
+                    try {
+                        java.lang.reflect.Field jniField = engine.getClass().getDeclaredField(fieldName);
+                        jniField.setAccessible(true);
+                        flutterJNI = jniField.get(engine);
+                        if (flutterJNI != null) {
+                            Log.d("OverlayService", "Found FlutterJNI using field: " + fieldName);
+                            fieldFound = true;
+                            break;
+                        }
+                    } catch (Exception e) {
+                        // Try next field
+                    }
+                }
+                
+                if (!fieldFound) {
+                    Log.w("OverlayService", "Could not find FlutterJNI field in engine");
+                    return;
+                }
                 
                 if (flutterJNI != null) {
                     Log.i("OverlayService", "✅ FlutterJNI found, disabling semantics...");
@@ -2385,19 +2422,56 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     
                     // Try to disable semantics using reflection
                     try {
-                        java.lang.reflect.Method disableSemanticsMethod = 
-                            flutterEngine.getClass().getMethod("setSemanticsEnabled", boolean.class);
-                        disableSemanticsMethod.invoke(flutterEngine, false);
-                        Log.d("OverlayService", "Disabled semantics at engine level");
+                        // Try multiple possible method names for different Flutter versions
+                        String[] possibleMethods = {"setSemanticsEnabled", "disableSemantics", "setAccessibilityEnabled"};
+                        boolean methodFound = false;
+                        
+                        for (String methodName : possibleMethods) {
+                            try {
+                                java.lang.reflect.Method disableSemanticsMethod = 
+                                    flutterEngine.getClass().getMethod(methodName, boolean.class);
+                                disableSemanticsMethod.invoke(flutterEngine, false);
+                                Log.d("OverlayService", "Disabled semantics at engine level using method: " + methodName);
+                                methodFound = true;
+                                break;
+                            } catch (Exception e) {
+                                // Try next method
+                            }
+                        }
+                        
+                        if (!methodFound) {
+                            Log.w("OverlayService", "Could not find semantics disabling method in engine");
+                        }
                     } catch (Exception e) {
                         Log.w("OverlayService", "Could not disable semantics: " + e.getMessage());
                     }
                     
                     // Try to disable accessibility at the FlutterJNI level
                     try {
-                        java.lang.reflect.Field jniField = flutterEngine.getClass().getDeclaredField("flutterJNI");
-                        jniField.setAccessible(true);
-                        Object flutterJNI = jniField.get(flutterEngine);
+                        // Try multiple possible field names for different Flutter versions
+                        String[] possibleFields = {"flutterJNI", "jni", "nativeJNI", "mFlutterJNI"};
+                        Object flutterJNI = null;
+                        boolean fieldFound = false;
+                        
+                        for (String fieldName : possibleFields) {
+                            try {
+                                java.lang.reflect.Field jniField = flutterEngine.getClass().getDeclaredField(fieldName);
+                                jniField.setAccessible(true);
+                                flutterJNI = jniField.get(flutterEngine);
+                                if (flutterJNI != null) {
+                                    Log.d("OverlayService", "Found FlutterJNI using field: " + fieldName);
+                                    fieldFound = true;
+                                    break;
+                                }
+                            } catch (Exception e) {
+                                // Try next field
+                            }
+                        }
+                        
+                        if (!fieldFound) {
+                            Log.w("OverlayService", "Could not find FlutterJNI field in engine");
+                            return;
+                        }
                         
                         if (flutterJNI != null) {
                             // Try to disable semantics in FlutterJNI
