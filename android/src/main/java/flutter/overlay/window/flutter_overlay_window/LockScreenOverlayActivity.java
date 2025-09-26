@@ -497,6 +497,12 @@ public class LockScreenOverlayActivity extends Activity {
             System.setProperty("flutter.accessibility", "false");
             System.setProperty("flutter.semantics", "false");
             System.setProperty("flutter.impeller", "false");
+            System.setProperty("flutter.accessibility.enabled", "false");
+            System.setProperty("flutter.semantics.enabled", "false");
+            
+            // Additional properties to disable accessibility at engine level
+            System.setProperty("flutter.disable-accessibility", "true");
+            System.setProperty("flutter.disable-semantics", "true");
             
             // Try to disable FlutterJNI.updateSemantics using reflection
             try {
@@ -514,6 +520,27 @@ public class LockScreenOverlayActivity extends Activity {
                 }
             } catch (Exception e) {
                 Log.w(TAG, "Could not access FlutterJNI methods: " + e.getMessage());
+            }
+            
+            // Try to disable accessibility at the engine level
+            try {
+                if (flutterEngine != null) {
+                    // Disable accessibility channel if it exists
+                    try {
+                        MethodChannel accessibilityChannel = new MethodChannel(
+                            flutterEngine.getDartExecutor(), 
+                            "flutter/accessibility"
+                        );
+                        accessibilityChannel.setMethodCallHandler((call, result) -> {
+                            Log.d(TAG, "🚫 BLOCKED accessibility channel call: " + call.method);
+                            result.success(null);
+                        });
+                    } catch (Exception e) {
+                        Log.d(TAG, "Accessibility channel not available or already disabled");
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Could not disable accessibility at engine level: " + e.getMessage());
             }
             
             Log.i(TAG, "✅ FlutterJNI.updateSemantics blocking configured");

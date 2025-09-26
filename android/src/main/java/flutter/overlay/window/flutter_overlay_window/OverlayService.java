@@ -390,9 +390,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 // For overlay creation, we don't need to check if FlutterView is attached to parent
                 // because we're about to attach it to WindowManager
                 // Just check if the view exists and is valid
-                if (flutterView.getWidth() <= 0 || flutterView.getHeight() <= 0) {
+                int width = flutterView.getWidth();
+                int height = flutterView.getHeight();
+                
+                // Only check dimensions if the view is already attached to a parent
+                // If not attached, dimensions will be 0x0 which is expected
+                if (flutterView.getParent() != null && (width <= 0 || height <= 0)) {
                     Log.w("OverlayService", "FlutterView has invalid dimensions: " + 
-                          flutterView.getWidth() + "x" + flutterView.getHeight());
+                          width + "x" + height);
                     return false;
                 }
                 
@@ -565,6 +570,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 Log.w("OverlayService", "⚠️ FlutterView is null, cannot apply accessibility safety measures");
                 return;
             }
+
+            // Set system properties to disable Flutter accessibility completely
+            System.setProperty("flutter.accessibility", "false");
+            System.setProperty("flutter.semantics", "false");
+            System.setProperty("flutter.impeller", "false");
+            System.setProperty("flutter.accessibility.enabled", "false");
+            System.setProperty("flutter.semantics.enabled", "false");
+            System.setProperty("flutter.disable-accessibility", "true");
+            System.setProperty("flutter.disable-semantics", "true");
 
             // Detect accessibility services first
             detectAccessibilityServices();
@@ -1719,6 +1733,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
             flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
             overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(),
                     OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+            
+            // Block accessibility channel to prevent FlutterJNI.updateSemantics crashes
+            try {
+                MethodChannel accessibilityChannel = new MethodChannel(
+                    flutterEngine.getDartExecutor(), 
+                    "flutter/accessibility"
+                );
+                accessibilityChannel.setMethodCallHandler((call, result) -> {
+                    Log.d("OverlayService", "🚫 BLOCKED accessibility channel call: " + call.method);
+                    result.success(null);
+                });
+                Log.d("OverlayService", "Accessibility channel blocked successfully");
+            } catch (Exception e) {
+                Log.d("OverlayService", "Accessibility channel not available or already disabled");
+            }
             
             // Set up the method call handler only after flutterChannel is initialized
             flutterChannel.setMethodCallHandler((call, result) -> {
