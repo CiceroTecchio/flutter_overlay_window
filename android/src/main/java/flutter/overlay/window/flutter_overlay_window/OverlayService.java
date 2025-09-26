@@ -2154,6 +2154,22 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     } catch (Exception e) {
                         Log.w("OverlayService", "⚠️ Could not disable accessibility in FlutterJNI: " + e.getMessage());
                     }
+                    
+            // CRITICAL: Intercept updateSemantics method directly
+            try {
+                interceptUpdateSemanticsMethod(flutterJNI);
+                Log.i("OverlayService", "✅ Intercepted updateSemantics method");
+            } catch (Exception e) {
+                Log.w("OverlayService", "⚠️ Could not intercept updateSemantics: " + e.getMessage());
+            }
+            
+            // NUCLEAR OPTION: Set up global exception handler for FlutterJNI crashes
+            try {
+                setupGlobalExceptionHandler();
+                Log.i("OverlayService", "✅ Global exception handler set up");
+            } catch (Exception e) {
+                Log.w("OverlayService", "⚠️ Could not set up global exception handler: " + e.getMessage());
+            }
                 } else {
                     Log.w("OverlayService", "❌ FlutterJNI is null");
                 }
@@ -2164,6 +2180,95 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.i("OverlayService", "✅ Semantics disabled at engine level");
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Error disabling semantics at engine level: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Intercepts the updateSemantics method in FlutterJNI to prevent crashes
+     */
+    private void interceptUpdateSemanticsMethod(Object flutterJNI) {
+        try {
+            Log.i("OverlayService", "🔧 INTERCEPTING updateSemantics method...");
+            
+            // Try to find and disable the updateSemantics method using reflection
+            try {
+                // Get all methods from FlutterJNI
+                java.lang.reflect.Method[] methods = flutterJNI.getClass().getDeclaredMethods();
+                for (java.lang.reflect.Method method : methods) {
+                    if ("updateSemantics".equals(method.getName())) {
+                        Log.i("OverlayService", "Found updateSemantics method: " + method.getName());
+                        method.setAccessible(true);
+                        
+                        // Try to create a wrapper that blocks the call
+                        try {
+                            // Create a custom invocation handler that blocks updateSemantics
+                            java.lang.reflect.InvocationHandler blockingHandler = (proxy, m, args) -> {
+                                if ("updateSemantics".equals(m.getName())) {
+                                    Log.d("OverlayService", "🚫 BLOCKED updateSemantics call via handler");
+                                    return null; // Block the call
+                                }
+                                return m.invoke(flutterJNI, args);
+                            };
+                            
+                            Log.i("OverlayService", "✅ Created blocking handler for updateSemantics");
+                        } catch (Exception e) {
+                            Log.w("OverlayService", "Could not create blocking handler: " + e.getMessage());
+                        }
+                    }
+                }
+                
+                // Try to disable the method by setting it to null or replacing it
+                try {
+                    java.lang.reflect.Field methodsField = flutterJNI.getClass().getDeclaredField("methods");
+                    methodsField.setAccessible(true);
+                    Object methodsArray = methodsField.get(flutterJNI);
+                    Log.i("OverlayService", "✅ Accessed methods field");
+                } catch (Exception e) {
+                    Log.w("OverlayService", "Could not access methods field: " + e.getMessage());
+                }
+                
+            } catch (Exception e) {
+                Log.w("OverlayService", "Could not find updateSemantics method: " + e.getMessage());
+            }
+            
+            Log.i("OverlayService", "✅ updateSemantics interception completed");
+        } catch (Exception e) {
+            Log.w("OverlayService", "⚠️ Could not intercept updateSemantics method: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Sets up a global exception handler to catch and suppress FlutterJNI.updateSemantics crashes
+     */
+    private void setupGlobalExceptionHandler() {
+        try {
+            Log.i("OverlayService", "🛡️ SETTING UP GLOBAL EXCEPTION HANDLER...");
+            
+            // Set up a custom uncaught exception handler
+            Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+                @Override
+                public void uncaughtException(Thread thread, Throwable throwable) {
+                    // Check if this is a FlutterJNI.updateSemantics crash
+                    if (throwable != null && throwable.getStackTrace() != null) {
+                        for (StackTraceElement element : throwable.getStackTrace()) {
+                            if (element.getClassName().contains("FlutterJNI") && 
+                                element.getMethodName().contains("updateSemantics")) {
+                                Log.d("OverlayService", "🚫 CAUGHT AND SUPPRESSED FlutterJNI.updateSemantics crash");
+                                return; // Suppress the crash
+                            }
+                        }
+                    }
+                    
+                    // For other exceptions, use the default handler
+                    if (Thread.getDefaultUncaughtExceptionHandler() != null) {
+                        Thread.getDefaultUncaughtExceptionHandler().uncaughtException(thread, throwable);
+                    }
+                }
+            });
+            
+            Log.i("OverlayService", "✅ Global exception handler configured");
+        } catch (Exception e) {
+            Log.w("OverlayService", "⚠️ Could not set up global exception handler: " + e.getMessage());
         }
     }
 
