@@ -448,6 +448,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 // Create and run engine
                 FlutterEngine newEngine = engineGroup.createAndRunEngine(this, entryPoint);
                 
+                // CRITICAL: Disable semantics immediately after engine creation
+                disableSemanticsAtEngineLevel(newEngine);
+                
                 // Wait a bit for engine to initialize
                 Thread.sleep(100);
                 
@@ -1645,79 +1648,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
                 flutterEngine = engineGroup.createAndRunEngine(this, entryPoint);
 
-                // ULTRA-CRITICAL: Disable semantics immediately after engine creation
-                try {
-                    if (flutterEngine.getAccessibilityChannel() != null) {
-                        flutterEngine.getAccessibilityChannel().setAccessibilityMessageHandler(null);
-                        Log.d("OverlayService", "Disabled accessibility channel immediately after engine creation");
-                    }
-                    
-                    // Try to disable semantics at engine level immediately
-                    java.lang.reflect.Method disableSemanticsMethod = 
-                        flutterEngine.getClass().getMethod("setSemanticsEnabled", boolean.class);
-                    disableSemanticsMethod.invoke(flutterEngine, false);
-                    Log.d("OverlayService", "Disabled semantics immediately after engine creation");
-                } catch (Exception e) {
-                    Log.w("OverlayService", "Could not disable semantics immediately: " + e.getMessage());
-                }
-                
-                // NUCLEAR OPTION: Try to disable semantics at the absolute lowest level
-                try {
-                    Log.i("OverlayService", "🔧 ATTEMPTING TO DISABLE SEMANTICS AT JNI LEVEL...");
-                    
-                    // Try to access the FlutterJNI and disable semantics there
-                    java.lang.reflect.Field jniField = flutterEngine.getClass().getDeclaredField("flutterJNI");
-                    jniField.setAccessible(true);
-                    Object flutterJNI = jniField.get(flutterEngine);
-                    
-                    if (flutterJNI != null) {
-                        Log.i("OverlayService", "✅ FlutterJNI found, attempting to disable semantics...");
-                        
-                        // Try to disable semantics in FlutterJNI
-                        try {
-                            java.lang.reflect.Method disableSemanticsJNIMethod = 
-                                flutterJNI.getClass().getMethod("setSemanticsEnabled", boolean.class);
-                            disableSemanticsJNIMethod.invoke(flutterJNI, false);
-                            Log.i("OverlayService", "✅ Disabled semantics at JNI level");
-                        } catch (Exception e) {
-                            Log.w("OverlayService", "⚠️ Could not disable semantics at JNI level: " + e.getMessage());
-                        }
-                        
-                        // Try to disable accessibility in FlutterJNI
-                        try {
-                            java.lang.reflect.Method disableAccessibilityJNIMethod = 
-                                flutterJNI.getClass().getMethod("setAccessibilityEnabled", boolean.class);
-                            disableAccessibilityJNIMethod.invoke(flutterJNI, false);
-                            Log.i("OverlayService", "✅ Disabled accessibility at JNI level");
-                        } catch (Exception e) {
-                            Log.w("OverlayService", "⚠️ Could not disable accessibility at JNI level: " + e.getMessage());
-                        }
-                        
-                        // CRITICAL: Try to disable the specific method that causes the crash
-                        try {
-                            java.lang.reflect.Method disableRequestSendAccessibilityEventMethod = 
-                                flutterJNI.getClass().getMethod("setRequestSendAccessibilityEventEnabled", boolean.class);
-                            disableRequestSendAccessibilityEventMethod.invoke(flutterJNI, false);
-                            Log.i("OverlayService", "✅ Disabled requestSendAccessibilityEvent at JNI level");
-                        } catch (Exception e) {
-                            Log.w("OverlayService", "⚠️ Could not disable requestSendAccessibilityEvent at JNI level: " + e.getMessage());
-                        }
-                        
-                        // Try to disable updateSemantics method specifically
-                        try {
-                            java.lang.reflect.Method disableUpdateSemanticsMethod = 
-                                flutterJNI.getClass().getMethod("setUpdateSemanticsEnabled", boolean.class);
-                            disableUpdateSemanticsMethod.invoke(flutterJNI, false);
-                            Log.i("OverlayService", "✅ Disabled updateSemantics at JNI level");
-                        } catch (Exception e) {
-                            Log.w("OverlayService", "⚠️ Could not disable updateSemantics at JNI level: " + e.getMessage());
-                        }
-                    } else {
-                        Log.w("OverlayService", "❌ FlutterJNI is null");
-                    }
-                } catch (Exception e) {
-                    Log.e("OverlayService", "❌ Error disabling semantics at JNI level: " + e.getMessage());
-                }
+                // CRITICAL: Disable semantics immediately after engine creation
+                disableSemanticsAtEngineLevel(flutterEngine);
 
                 // Cache the created FlutterEngine for future use
                 FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
@@ -2155,6 +2087,83 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.i("OverlayService", "✅ FlutterJNI.updateSemantics blocking configured");
         } catch (Exception e) {
             Log.w("OverlayService", "⚠️ Could not block FlutterJNI.updateSemantics: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Disables semantics at the Flutter engine level immediately after creation
+     * This is the most aggressive approach to prevent FlutterJNI.updateSemantics crashes
+     */
+    private void disableSemanticsAtEngineLevel(FlutterEngine engine) {
+        try {
+            Log.i("OverlayService", "🚫 DISABLING SEMANTICS AT ENGINE LEVEL...");
+            
+            // Set system properties to disable Flutter accessibility completely
+            System.setProperty("flutter.accessibility", "false");
+            System.setProperty("flutter.semantics", "false");
+            System.setProperty("flutter.accessibility.enabled", "false");
+            System.setProperty("flutter.semantics.enabled", "false");
+            System.setProperty("flutter.disable-accessibility", "true");
+            System.setProperty("flutter.disable-semantics", "true");
+            
+            // Try to disable accessibility channel immediately
+            try {
+                if (engine.getAccessibilityChannel() != null) {
+                    engine.getAccessibilityChannel().setAccessibilityMessageHandler(null);
+                    Log.d("OverlayService", "Disabled accessibility channel at engine level");
+                }
+            } catch (Exception e) {
+                Log.d("OverlayService", "Accessibility channel not available or already disabled");
+            }
+            
+            // Try to disable semantics using reflection at engine level
+            try {
+                java.lang.reflect.Method disableSemanticsMethod = 
+                    engine.getClass().getMethod("setSemanticsEnabled", boolean.class);
+                disableSemanticsMethod.invoke(engine, false);
+                Log.d("OverlayService", "Disabled semantics at engine level");
+            } catch (Exception e) {
+                Log.w("OverlayService", "Could not disable semantics at engine level: " + e.getMessage());
+            }
+            
+            // Try to access FlutterJNI and disable semantics there
+            try {
+                java.lang.reflect.Field jniField = engine.getClass().getDeclaredField("flutterJNI");
+                jniField.setAccessible(true);
+                Object flutterJNI = jniField.get(engine);
+                
+                if (flutterJNI != null) {
+                    Log.i("OverlayService", "✅ FlutterJNI found, disabling semantics...");
+                    
+                    // Try to disable semantics in FlutterJNI
+                    try {
+                        java.lang.reflect.Method disableSemanticsJNIMethod = 
+                            flutterJNI.getClass().getMethod("setSemanticsEnabled", boolean.class);
+                        disableSemanticsJNIMethod.invoke(flutterJNI, false);
+                        Log.i("OverlayService", "✅ Disabled semantics in FlutterJNI");
+                    } catch (Exception e) {
+                        Log.w("OverlayService", "⚠️ Could not disable semantics in FlutterJNI: " + e.getMessage());
+                    }
+                    
+                    // Try to disable accessibility in FlutterJNI
+                    try {
+                        java.lang.reflect.Method disableAccessibilityJNIMethod = 
+                            flutterJNI.getClass().getMethod("setAccessibilityEnabled", boolean.class);
+                        disableAccessibilityJNIMethod.invoke(flutterJNI, false);
+                        Log.i("OverlayService", "✅ Disabled accessibility in FlutterJNI");
+                    } catch (Exception e) {
+                        Log.w("OverlayService", "⚠️ Could not disable accessibility in FlutterJNI: " + e.getMessage());
+                    }
+                } else {
+                    Log.w("OverlayService", "❌ FlutterJNI is null");
+                }
+            } catch (Exception e) {
+                Log.w("OverlayService", "Could not access FlutterJNI: " + e.getMessage());
+            }
+            
+            Log.i("OverlayService", "✅ Semantics disabled at engine level");
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error disabling semantics at engine level: " + e.getMessage());
         }
     }
 

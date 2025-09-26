@@ -415,6 +415,10 @@ public class FlutterOverlayWindowPlugin implements
                         FlutterInjector.instance().flutterLoader().findAppBundlePath(),
                         "overlayMain");
                 FlutterEngine engine = enn.createAndRunEngine(context, dEntry);
+                
+                // CRITICAL: Disable semantics immediately after engine creation
+                disableSemanticsAtEngineLevel(engine);
+                
                 FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
             } catch (Exception e) {
                 Log.e("FlutterOverlayWindowPlugin", "Failed to create Flutter engine in onAttachedToActivity: " + e.getMessage());
@@ -564,6 +568,83 @@ public class FlutterOverlayWindowPlugin implements
                 settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(settingsIntent);
             }
+        }
+    }
+
+    /**
+     * Disables semantics at the Flutter engine level immediately after creation
+     * This is the most aggressive approach to prevent FlutterJNI.updateSemantics crashes
+     */
+    private void disableSemanticsAtEngineLevel(FlutterEngine engine) {
+        try {
+            Log.i("FlutterOverlayWindowPlugin", "🚫 DISABLING SEMANTICS AT ENGINE LEVEL...");
+            
+            // Set system properties to disable Flutter accessibility completely
+            System.setProperty("flutter.accessibility", "false");
+            System.setProperty("flutter.semantics", "false");
+            System.setProperty("flutter.accessibility.enabled", "false");
+            System.setProperty("flutter.semantics.enabled", "false");
+            System.setProperty("flutter.disable-accessibility", "true");
+            System.setProperty("flutter.disable-semantics", "true");
+            
+            // Try to disable accessibility channel immediately
+            try {
+                if (engine.getAccessibilityChannel() != null) {
+                    engine.getAccessibilityChannel().setAccessibilityMessageHandler(null);
+                    Log.d("FlutterOverlayWindowPlugin", "Disabled accessibility channel at engine level");
+                }
+            } catch (Exception e) {
+                Log.d("FlutterOverlayWindowPlugin", "Accessibility channel not available or already disabled");
+            }
+            
+            // Try to disable semantics using reflection at engine level
+            try {
+                java.lang.reflect.Method disableSemanticsMethod = 
+                    engine.getClass().getMethod("setSemanticsEnabled", boolean.class);
+                disableSemanticsMethod.invoke(engine, false);
+                Log.d("FlutterOverlayWindowPlugin", "Disabled semantics at engine level");
+            } catch (Exception e) {
+                Log.w("FlutterOverlayWindowPlugin", "Could not disable semantics at engine level: " + e.getMessage());
+            }
+            
+            // Try to access FlutterJNI and disable semantics there
+            try {
+                java.lang.reflect.Field jniField = engine.getClass().getDeclaredField("flutterJNI");
+                jniField.setAccessible(true);
+                Object flutterJNI = jniField.get(engine);
+                
+                if (flutterJNI != null) {
+                    Log.i("FlutterOverlayWindowPlugin", "✅ FlutterJNI found, disabling semantics...");
+                    
+                    // Try to disable semantics in FlutterJNI
+                    try {
+                        java.lang.reflect.Method disableSemanticsJNIMethod = 
+                            flutterJNI.getClass().getMethod("setSemanticsEnabled", boolean.class);
+                        disableSemanticsJNIMethod.invoke(flutterJNI, false);
+                        Log.i("FlutterOverlayWindowPlugin", "✅ Disabled semantics in FlutterJNI");
+                    } catch (Exception e) {
+                        Log.w("FlutterOverlayWindowPlugin", "⚠️ Could not disable semantics in FlutterJNI: " + e.getMessage());
+                    }
+                    
+                    // Try to disable accessibility in FlutterJNI
+                    try {
+                        java.lang.reflect.Method disableAccessibilityJNIMethod = 
+                            flutterJNI.getClass().getMethod("setAccessibilityEnabled", boolean.class);
+                        disableAccessibilityJNIMethod.invoke(flutterJNI, false);
+                        Log.i("FlutterOverlayWindowPlugin", "✅ Disabled accessibility in FlutterJNI");
+                    } catch (Exception e) {
+                        Log.w("FlutterOverlayWindowPlugin", "⚠️ Could not disable accessibility in FlutterJNI: " + e.getMessage());
+                    }
+                } else {
+                    Log.w("FlutterOverlayWindowPlugin", "❌ FlutterJNI is null");
+                }
+            } catch (Exception e) {
+                Log.w("FlutterOverlayWindowPlugin", "Could not access FlutterJNI: " + e.getMessage());
+            }
+            
+            Log.i("FlutterOverlayWindowPlugin", "✅ Semantics disabled at engine level");
+        } catch (Exception e) {
+            Log.e("FlutterOverlayWindowPlugin", "❌ Error disabling semantics at engine level: " + e.getMessage());
         }
     }
 }
