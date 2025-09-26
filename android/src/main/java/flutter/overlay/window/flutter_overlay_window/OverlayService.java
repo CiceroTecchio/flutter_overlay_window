@@ -2166,7 +2166,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     
             // CRITICAL: Intercept updateSemantics method directly
             try {
-                interceptUpdateSemanticsMethod(flutterJNI);
+                interceptUpdateSemanticsMethod(flutterJNI, flutterEngine);
                 Log.i("OverlayService", "✅ Intercepted updateSemantics method");
             } catch (Exception e) {
                 Log.w("OverlayService", "⚠️ Could not intercept updateSemantics: " + e.getMessage());
@@ -2182,7 +2182,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             
             // FINAL NUCLEAR OPTION: Completely disable accessibility at the engine level
             try {
-                disableAccessibilityCompletely();
+                disableAccessibilityCompletely(flutterEngine);
                 Log.i("OverlayService", "✅ Accessibility completely disabled");
             } catch (Exception e) {
                 Log.w("OverlayService", "⚠️ Could not disable accessibility completely: " + e.getMessage());
@@ -2203,7 +2203,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     /**
      * Intercepts the updateSemantics method in FlutterJNI to prevent crashes
      */
-    private void interceptUpdateSemanticsMethod(Object flutterJNI) {
+    private void interceptUpdateSemanticsMethod(Object flutterJNI, FlutterEngine flutterEngine) {
         try {
             Log.i("OverlayService", "🔧 INTERCEPTING updateSemantics method...");
             
@@ -2344,7 +2344,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     /**
      * FINAL NUCLEAR OPTION: Completely disables accessibility at all levels
      */
-    private void disableAccessibilityCompletely() {
+    private void disableAccessibilityCompletely(FlutterEngine flutterEngine) {
         try {
             Log.i("OverlayService", "💥 FINAL NUCLEAR OPTION: DISABLING ACCESSIBILITY COMPLETELY...");
             
