@@ -280,6 +280,18 @@ public class FlutterOverlayWindowPlugin implements
                Log.d("FlutterOverlayWindowPlugin", "🔍 closeOverlay() - Iniciando fechamento");
                Log.d("FlutterOverlayWindowPlugin", "📊 Estado antes - OverlayService: " + OverlayService.isRunning + ", LockScreenOverlay: " + LockScreenOverlayActivity.isRunning);
                
+               // Fechar LockScreenOverlayActivity primeiro (se estiver rodando)
+               if (LockScreenOverlayActivity.isRunning) {
+                    Log.d("FlutterOverlayWindowPlugin", "🛑 Enviando broadcast para fechar LockScreenOverlayActivity");
+                    // Envia broadcast para fechar a LockScreenOverlayActivity, caso esteja visível
+                    Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
+                    closeIntent.setPackage(context.getPackageName());
+                    context.sendBroadcast(closeIntent);
+                } else {
+                    Log.d("FlutterOverlayWindowPlugin", "ℹ️ LockScreenOverlayActivity não está rodando, pulando broadcast");
+                }
+               
+               // Fechar OverlayService (se estiver rodando)
                if (OverlayService.isRunning) {
                     Log.d("FlutterOverlayWindowPlugin", "🛑 Parando OverlayService");
                     Intent i = new Intent(context, OverlayService.class);
@@ -289,16 +301,6 @@ public class FlutterOverlayWindowPlugin implements
                     Log.d("FlutterOverlayWindowPlugin", "⏳ Aguardando confirmação de destruição do OverlayService...");
                     waitForServiceDestruction(result);
                     return; // Retorna aqui, o resultado será enviado no callback
-                }
-
-                if (LockScreenOverlayActivity.isRunning) {
-                    Log.d("FlutterOverlayWindowPlugin", "🛑 Enviando broadcast para fechar LockScreenOverlayActivity");
-                    // Envia broadcast para fechar a LockScreenOverlayActivity, caso esteja visível
-                    Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
-                    closeIntent.setPackage(context.getPackageName());
-                    context.sendBroadcast(closeIntent);
-                } else {
-                    Log.d("FlutterOverlayWindowPlugin", "ℹ️ LockScreenOverlayActivity não está rodando, pulando broadcast");
                 }
                 
                 Log.d("FlutterOverlayWindowPlugin", "✅ closeOverlay() concluído com sucesso");
