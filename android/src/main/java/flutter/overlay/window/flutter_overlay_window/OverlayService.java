@@ -126,11 +126,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
                             if (flutterView != null && flutterEngine != null) {
                                 flutterView.attachToFlutterEngine(flutterEngine);
-                                flutterEngine.getLifecycleChannel().appIsResumed();
+                                // REMOVIDO: flutterEngine.getLifecycleChannel().appIsResumed(); - estava causando abertura do app
                                 flutterView.invalidate();
                                 flutterView.requestLayout();
                                 bringOverlayToFront();
-                                Log.d("OverlayService", "FlutterView resumido e redraw feito.");
+                                Log.d("OverlayService", "FlutterView resumido e redraw feito (sem appIsResumed).");
                             } else {
                                 Log.w("OverlayService", "flutterView ou flutterEngine nulos ao tentar resumir.");
                             }
