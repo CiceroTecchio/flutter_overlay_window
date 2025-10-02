@@ -56,6 +56,9 @@ public class FlutterOverlayWindowPlugin implements
     private BasicMessageChannel<Object> messenger;
     private Result pendingResult;
     final int REQUEST_CODE_FOR_OVERLAY_PERMISSION = 1248;
+    
+    private BroadcastReceiver serviceDestroyedReceiver;
+    private Result pendingCloseResult;
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
         this.context = flutterPluginBinding.getApplicationContext();
@@ -274,17 +277,31 @@ public class FlutterOverlayWindowPlugin implements
             }
         } else if (call.method.equals("closeOverlay")) {
            try {
+               Log.d("FlutterOverlayWindowPlugin", "🔍 closeOverlay() - Iniciando fechamento");
+               Log.d("FlutterOverlayWindowPlugin", "📊 Estado antes - OverlayService: " + OverlayService.isRunning + ", LockScreenOverlay: " + LockScreenOverlayActivity.isRunning);
+               
                if (OverlayService.isRunning) {
+                    Log.d("FlutterOverlayWindowPlugin", "🛑 Parando OverlayService");
                     Intent i = new Intent(context, OverlayService.class);
                     context.stopService(i);
+                    
+                    // Aguardar o broadcast de destruição do service
+                    Log.d("FlutterOverlayWindowPlugin", "⏳ Aguardando confirmação de destruição do OverlayService...");
+                    waitForServiceDestruction(result);
+                    return; // Retorna aqui, o resultado será enviado no callback
                 }
 
                 if (LockScreenOverlayActivity.isRunning) {
+                    Log.d("FlutterOverlayWindowPlugin", "🛑 Enviando broadcast para fechar LockScreenOverlayActivity");
                     // Envia broadcast para fechar a LockScreenOverlayActivity, caso esteja visível
                     Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
                     closeIntent.setPackage(context.getPackageName());
                     context.sendBroadcast(closeIntent);
+                } else {
+                    Log.d("FlutterOverlayWindowPlugin", "ℹ️ LockScreenOverlayActivity não está rodando, pulando broadcast");
                 }
+                
+                Log.d("FlutterOverlayWindowPlugin", "✅ closeOverlay() concluído com sucesso");
                 result.success(true);
             } catch (Exception e) {
                 Log.e("OverlayPlugin", "Failed to close overlay: " + e.getMessage());
@@ -470,5 +487,47 @@ public class FlutterOverlayWindowPlugin implements
                 context.startActivity(settingsIntent);
             }
         }
+    }
+    
+    private void waitForServiceDestruction(Result result) {
+        pendingCloseResult = result;
+        
+        serviceDestroyedReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                Log.d("FlutterOverlayWindowPlugin", "✅ Broadcast de destruição do OverlayService recebido");
+                if (pendingCloseResult != null) {
+                    pendingCloseResult.success(true);
+                    pendingCloseResult = null;
+                }
+                
+                // Desregistrar o receiver
+                try {
+                    context.unregisterReceiver(serviceDestroyedReceiver);
+                } catch (Exception e) {
+                    Log.e("FlutterOverlayWindowPlugin", "Erro ao desregistrar receiver: " + e.getMessage());
+                }
+                serviceDestroyedReceiver = null;
+            }
+        };
+        
+        IntentFilter filter = new IntentFilter("flutter.overlay.window.OVERLAY_SERVICE_DESTROYED");
+        context.registerReceiver(serviceDestroyedReceiver, filter);
+        
+        // Timeout de 5 segundos
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (pendingCloseResult != null) {
+                Log.w("FlutterOverlayWindowPlugin", "⚠️ Timeout aguardando destruição do OverlayService");
+                pendingCloseResult.success(true); // Retorna sucesso mesmo com timeout
+                pendingCloseResult = null;
+                
+                try {
+                    context.unregisterReceiver(serviceDestroyedReceiver);
+                } catch (Exception e) {
+                    Log.e("FlutterOverlayWindowPlugin", "Erro ao desregistrar receiver no timeout: " + e.getMessage());
+                }
+                serviceDestroyedReceiver = null;
+            }
+        }, 5000);
     }
 }

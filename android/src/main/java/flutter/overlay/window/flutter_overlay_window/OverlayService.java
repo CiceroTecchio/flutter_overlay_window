@@ -229,6 +229,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
         unregisterReceiver(screenReceiver);
         
         Log.i("OverlayService", "✅ OverlayService destruído com sucesso");
+        
+        // Notificar que o service foi realmente destruído
+        Intent destroyedIntent = new Intent("flutter.overlay.window.OVERLAY_SERVICE_DESTROYED");
+        destroyedIntent.setPackage(getPackageName());
+        sendBroadcast(destroyedIntent);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
