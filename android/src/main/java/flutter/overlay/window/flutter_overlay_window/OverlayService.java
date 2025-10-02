@@ -551,11 +551,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
-    @Override
     // Cache estático para evitar recriações desnecessárias
     private static volatile FlutterEngine cachedEngine;
     private static final Object engineLock = new Object();
     
+    @Override
     public void onCreate() { // Get the cached FlutterEngine
         // Initialize resources early to prevent null pointer exceptions
         mResources = getApplicationContext().getResources();
