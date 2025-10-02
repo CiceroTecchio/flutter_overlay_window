@@ -234,7 +234,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
     @Override
     public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
-        Log.i("OverlayService", "🎬 onStartCommand() - Intent recebido");
+        Log.i("OverlayService", "🎬 onStartCommand() - Intent recebido (tentativa #" + (isRunning ? "subsequente" : "primeira") + ")");
         
         if (intent == null) {
             Log.w("OverlayService", "⚠️ Intent nulo, retornando START_NOT_STICKY");
@@ -243,6 +243,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         
         String action = intent.getAction();
         Log.d("OverlayService", "📋 Action do Intent: " + (action != null ? action : "null"));
+        Log.d("OverlayService", "📊 Estado antes - isRunning: " + isRunning + ", windowManager: " + (windowManager != null) + ", flutterView: " + (flutterView != null));
 
         // 🔹 Se overlay já ativo e ação for apenas trazer para frente
         if (windowManager != null && flutterView != null && "SHOW_OVERLAY_AGAIN".equals(action)) {
@@ -298,19 +299,36 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.detachFromFlutterEngine();
                 windowManager = null;
                 flutterView = null;
-                stopSelf();
+                // NÃO chamar stopSelf() aqui - apenas limpar e continuar
+                Log.d("OverlayService", "🧹 Overlay anterior removido, continuando com novo");
         }
 
         isRunning = true;
         Log.d("OverlayService", "✅ Marcando overlay como running");
         Log.d("onStartCommand", "Service started");
 
+        // Verificar FlutterEngine no onStartCommand (não apenas no onCreate)
         FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         if (engine == null) {
             Log.e("OverlayService", "❌ FlutterEngine não encontrado no cache");
-            return;
+            Log.d("OverlayService", "🔄 Tentando criar FlutterEngine no onStartCommand");
+            
+            try {
+                FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
+                DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
+                        FlutterInjector.instance().flutterLoader().findAppBundlePath(),
+                        "overlayMain");
+                
+                engine = engineGroup.createAndRunEngine(this, entryPoint);
+                FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
+                Log.i("OverlayService", "✅ FlutterEngine criada no onStartCommand");
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Falha ao criar FlutterEngine: " + e.getMessage());
+                return;
+            }
+        } else {
+            Log.d("OverlayService", "✅ FlutterEngine encontrado no cache");
         }
-        Log.d("OverlayService", "✅ FlutterEngine encontrado no cache");
         if (flutterChannel == null) {
             flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
             flutterChannel.setMethodCallHandler((call, result) -> {
