@@ -512,7 +512,11 @@ public class FlutterOverlayWindowPlugin implements
         };
         
         IntentFilter filter = new IntentFilter("flutter.overlay.window.OVERLAY_SERVICE_DESTROYED");
-        context.registerReceiver(serviceDestroyedReceiver, filter);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(serviceDestroyedReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            context.registerReceiver(serviceDestroyedReceiver, filter);
+        }
         
         // Timeout de 5 segundos
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
