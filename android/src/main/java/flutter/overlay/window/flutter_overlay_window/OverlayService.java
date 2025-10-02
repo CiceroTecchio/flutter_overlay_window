@@ -287,13 +287,26 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         if (isCloseWindow) {
             Log.d("OverlayService", "🚪 Fechando overlay conforme solicitado");
-            if (windowManager != null) {
+            Log.d("OverlayService", "📊 Estado antes de fechar - isRunning: " + isRunning + ", windowManager: " + (windowManager != null) + ", flutterView: " + (flutterView != null));
+            
+            if (windowManager != null && flutterView != null) {
+                try {
+                    Log.d("OverlayService", "🗑️ Removendo FlutterView do WindowManager");
                     windowManager.removeView(flutterView);
+                    Log.d("OverlayService", "🔌 Desconectando FlutterView do FlutterEngine");
                     flutterView.detachFromFlutterEngine();
                     windowManager = null;
-                    stopSelf();
+                    flutterView = null;
+                    Log.d("OverlayService", "✅ Recursos limpos com sucesso");
+                } catch (Exception e) {
+                    Log.e("OverlayService", "❌ Erro ao limpar recursos: " + e.getMessage());
+                }
             }
+            
             isRunning = false;
+            Log.d("OverlayService", "📊 Estado após fechar - isRunning: " + isRunning);
+            Log.d("OverlayService", "🛑 Chamando stopSelf()");
+            stopSelf();
             return;
         }
 
