@@ -126,6 +126,7 @@ public class FlutterOverlayWindowPlugin implements
             boolean isLocked = keyguardManager != null && keyguardManager.isKeyguardLocked();
             
             Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 4: Verificações de tela concluídas - isScreenOff: " + isScreenOff + ", isLocked: " + isLocked);
+            Log.d("FlutterOverlayWindowPlugin", "🔍 Flag recebido: " + flag);
 
             boolean lockScreenIntent = false;
 
@@ -133,12 +134,12 @@ public class FlutterOverlayWindowPlugin implements
 
             if ("lockScreen".equals(flag) && (isScreenOff || isLocked)) {
                 lockScreenIntent = true;
-                Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 5: LockScreen intent ativado");
+                Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 5: LockScreen intent ativado - flag=lockScreen e tela bloqueada");
             } else {
                 if (flag == null || "lockScreen".equals(flag)) {
                     lockScreenFlag = "flagNotFocusable";
                 }
-                Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 5: Overlay normal será usado");
+                Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 5: Overlay normal será usado - flag=" + flag + ", lockScreenIntent=" + lockScreenIntent);
             }
 
             WindowSetup.width = width != null ? width : -1;
@@ -154,6 +155,7 @@ public class FlutterOverlayWindowPlugin implements
             Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 6: WindowSetup configurado com sucesso");
 
             if (lockScreenIntent) {
+                Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 6A: Usando LockScreenOverlayActivity");
                 if (LockScreenOverlayActivity.isRunning) {
                     Log.d("OverlayPlugin", "LockScreenOverlay já está rodando, trazendo para frente.");
                     
@@ -185,6 +187,7 @@ public class FlutterOverlayWindowPlugin implements
                     context.startActivity(lockIntent);
                 }
             } else {
+                Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 6B: Usando OverlayService normal");
                 try {
                     Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 7: Iniciando OverlayService normal");
                     Log.d("FlutterOverlayWindowPlugin", "🚀 Iniciando OverlayService normal");
@@ -222,32 +225,40 @@ public class FlutterOverlayWindowPlugin implements
             Log.i("FlutterOverlayWindowPlugin", "✅ showOverlay() - Overlay iniciado com sucesso");
             result.success(null);
         } else if (call.method.equals("isOverlayActive")) {
-            result.success(OverlayService.isRunning);
+            result.success(OverlayService.isRunning || LockScreenOverlayActivity.isRunning);
             return;
         } else if (call.method.equals("moveOverlay")) {
-
-            if (LockScreenOverlayActivity.isRunning) {
-                // Envia broadcast para fechar a LockScreenOverlayActivity, caso esteja visível
-                Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
-                closeIntent.setPackage(context.getPackageName());
-                context.sendBroadcast(closeIntent);
-            }
+            // Only move overlay if it's actually running
             if (OverlayService.isRunning) {
                 try {
                     int x = call.argument("x");
                     int y = call.argument("y");
                     OverlayService.moveOverlay(x, y);
+                    result.success(true);
                 } catch (Exception e) {
                     Log.e("OverlayPlugin", "Failed to move overlay: " + e.getMessage());
                     e.printStackTrace();
                     result.error("MOVE_ERROR", "Failed to move overlay", e.getMessage());
                     return;
                 }
+            } else if (LockScreenOverlayActivity.isRunning) {
+                // LockScreenOverlayActivity doesn't support moving, just return success
+                Log.d("OverlayPlugin", "LockScreenOverlayActivity is running, move not supported");
+                result.success(true);
+            } else {
+                Log.w("OverlayPlugin", "No overlay is currently running");
+                result.success(false);
             }
-            result.success(true);
         } else if (call.method.equals("getOverlayPosition")) {
             try {
-                result.success(OverlayService.getCurrentPosition());
+                if (OverlayService.isRunning) {
+                    result.success(OverlayService.getCurrentPosition());
+                } else if (LockScreenOverlayActivity.isRunning) {
+                    // LockScreenOverlayActivity doesn't support position tracking
+                    result.success(null);
+                } else {
+                    result.success(null);
+                }
             } catch (Exception e) {
                 Log.e("OverlayPlugin", "Failed to get overlay position: " + e.getMessage());
                 e.printStackTrace();
