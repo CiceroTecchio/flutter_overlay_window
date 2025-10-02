@@ -58,8 +58,6 @@ class FlutterOverlayWindow {
   /// `positionGravity` the overlay postion after drag and default is [PositionGravity.none]
   ///
   /// `startPosition` the overlay start position and default is null
-  // Otimização: Cache de parâmetros para evitar recriações desnecessárias
-  static final Map<String, dynamic> _lastOverlayParams = {};
 
   static Future<void> showOverlay({
     int height = WindowSize.fullCover,
@@ -87,13 +85,8 @@ class FlutterOverlayWindow {
       "startPosition": startPosition?.toMap(),
     };
 
-    // Otimização: Verificar se os parâmetros mudaram para evitar chamadas desnecessárias
-    if (_lastOverlayParams.toString() != params.toString()) {
-      _lastOverlayParams.clear();
-      _lastOverlayParams.addAll(params);
-
-      await _channel.invokeMethod('showOverlay', params);
-    }
+    // Sempre chamar o método, sem cache de parâmetros
+    await _channel.invokeMethod('showOverlay', params);
   }
 
   /// Check if overlay permission is granted
