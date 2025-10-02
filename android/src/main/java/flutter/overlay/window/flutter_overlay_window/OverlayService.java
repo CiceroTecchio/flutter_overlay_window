@@ -162,58 +162,70 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
     public void onDestroy() {
-        Log.d("OverLay", "Destroying the overlay window service");
+        Log.i("OverlayService", "🗑️ onDestroy() - Iniciando destruição do OverlayService");
 
         try {
             FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
             if (engine != null) {
-                Log.d("OverLay", "Parando som do ringtone");
+                Log.d("OverlayService", "📞 Chamando onOverlayClosed no Flutter");
                 new MethodChannel(engine.getDartExecutor(), "my_custom_overlay_channel")
                         .invokeMethod("onOverlayClosed", null);
             } else {
-                Log.d("OverLay", "FlutterEngine nulo, não foi possível chamar onOverlayClosed");
+                Log.w("OverlayService", "⚠️ FlutterEngine nulo, não foi possível chamar onOverlayClosed");
             }
         } catch (Exception e) {
-            Log.e("OverLay", "Falha ao parar som do ringtone", e);
+            Log.e("OverlayService", "❌ Falha ao chamar onOverlayClosed", e);
         }
 
         if (windowManager != null && flutterView != null) {
             try {
+                Log.d("OverlayService", "🗑️ Removendo FlutterView do WindowManager");
                 windowManager.removeView(flutterView);
             } catch (Exception e) {
-                Log.e("OverLay", "Erro ao remover flutterView", e);
+                Log.e("OverlayService", "❌ Erro ao remover flutterView", e);
             }
+            Log.d("OverlayService", "🔌 Desconectando FlutterView do FlutterEngine");
             flutterView.detachFromFlutterEngine();
             flutterView = null;
             windowManager = null;
         }
 
         // Otimização: Limpeza completa de recursos
+        Log.d("OverlayService", "🧹 Limpando recursos e caches");
         isRunning = false;
         instance = null;
         
         // Limpar cache de conversões
+        int dpCacheSize = dpToPxCache.size();
+        int pxCacheSize = pxToDpCache.size();
         dpToPxCache.clear();
         pxToDpCache.clear();
         cachedLayoutParams = null;
         cachedEngine = null;
+        
+        Log.d("OverlayService", "📊 Cache limpo - DP cache: " + dpCacheSize + " itens, PX cache: " + pxCacheSize + " itens");
 
         try {
             NotificationManager notificationManager = (NotificationManager)
                     getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
             if (notificationManager != null) {
+                Log.d("OverlayService", "🔕 Cancelando notificação");
                 notificationManager.cancel(OverlayConstants.NOTIFICATION_ID);
             }
         } catch (Exception e) {
-            Log.e("OverLay", "Erro ao cancelar notificação", e);
+            Log.e("OverlayService", "❌ Erro ao cancelar notificação", e);
         }
 
         super.onDestroy();
         if (isReceiverRegistered) {
+            Log.d("OverlayService", "📡 Desregistrando screenUnlockReceiver");
             unregisterReceiver(screenUnlockReceiver);
             isReceiverRegistered = false;
         }
+        Log.d("OverlayService", "📡 Desregistrando screenReceiver");
         unregisterReceiver(screenReceiver);
+        
+        Log.i("OverlayService", "✅ OverlayService destruído com sucesso");
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
@@ -521,32 +533,47 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private static WindowManager.LayoutParams cachedLayoutParams;
     
     public static boolean moveOverlay(int x, int y) {
+        Log.d("OverlayService", "🎯 moveOverlay() - Movendo overlay para (" + x + ", " + y + ")");
+        
         if (instance != null && instance.flutterView != null) {
             if (instance.windowManager != null) {
                 // Otimização: Usar cache de LayoutParams
                 WindowManager.LayoutParams params = cachedLayoutParams;
                 if (params == null) {
+                    Log.d("OverlayService", "🔄 Cache MISS - Obtendo LayoutParams do FlutterView");
                     params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
                     cachedLayoutParams = params;
+                } else {
+                    Log.v("OverlayService", "💾 Cache HIT - Reutilizando LayoutParams");
                 }
                 
                 // Otimização: Calcular valores apenas se necessário
                 int newX = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
                 int newY = instance.dpToPx(y);
                 
+                Log.d("OverlayService", "📐 Posição atual: (" + params.x + ", " + params.y + ") -> Nova: (" + newX + ", " + newY + ")");
+                
                 // Otimização: Verificar se realmente precisa atualizar
                 if (params.x != newX || params.y != newY) {
+                    long startTime = System.currentTimeMillis();
                     params.x = newX;
                     params.y = newY;
                     
                     // Otimização: Usar post para operação assíncrona
                     instance.windowManager.updateViewLayout(instance.flutterView, params);
+                    long updateTime = System.currentTimeMillis() - startTime;
+                    
+                    Log.i("OverlayService", "✅ Overlay movido em " + updateTime + "ms");
+                } else {
+                    Log.d("OverlayService", "⏭️ Posição inalterada, pulando atualização");
                 }
                 return true;
             } else {
+                Log.w("OverlayService", "⚠️ WindowManager nulo");
                 return false;
             }
         } else {
+            Log.w("OverlayService", "⚠️ Instance ou FlutterView nulos");
             return false;
         }
     }
@@ -557,6 +584,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
     
     @Override
     public void onCreate() { // Get the cached FlutterEngine
+        Log.d("OverlayService", "🚀 onCreate() - Iniciando OverlayService");
+        
         // Initialize resources early to prevent null pointer exceptions
         mResources = getApplicationContext().getResources();
 
@@ -570,6 +599,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         FlutterEngine flutterEngine = cachedEngine;
         
         if (flutterEngine == null) {
+            Log.d("OverlayService", "🔍 Cache local vazio, verificando cache global...");
             synchronized (engineLock) {
                 // Double-check locking pattern
                 flutterEngine = cachedEngine;
@@ -578,7 +608,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
                     
                     if (flutterEngine == null) {
-                        Log.d("OverlayService", "Creating new FlutterEngine with optimized settings");
+                        Log.i("OverlayService", "🆕 CRIANDO NOVA FLUTTER ENGINE - Cache vazio");
+                        long startTime = System.currentTimeMillis();
+                        
                         FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
                         DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
                                 FlutterInjector.instance().flutterLoader().findAppBundlePath(),
@@ -586,15 +618,24 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
                         flutterEngine = engineGroup.createAndRunEngine(this, entryPoint);
                         
+                        long creationTime = System.currentTimeMillis() - startTime;
+                        Log.i("OverlayService", "✅ FlutterEngine criada em " + creationTime + "ms");
+                        
                         // Cache em ambos os locais para performance
                         FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
                         cachedEngine = flutterEngine;
+                        Log.d("OverlayService", "💾 Engine armazenada no cache local e global");
                     } else {
                         // Usar engine do cache global
+                        Log.i("OverlayService", "♻️ REUTILIZANDO ENGINE do cache global");
                         cachedEngine = flutterEngine;
                     }
+                } else {
+                    Log.d("OverlayService", "♻️ REUTILIZANDO ENGINE do cache local (double-check)");
                 }
             }
+        } else {
+            Log.i("OverlayService", "♻️ REUTILIZANDO ENGINE do cache local");
         }
 
         // Create the MethodChannel with the properly initialized FlutterEngine
@@ -692,13 +733,18 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // Verificar cache primeiro
         Integer cached = dpToPxCache.get(dp);
         if (cached != null) {
+            Log.v("OverlayService", "💾 Cache HIT - dpToPx(" + dp + ") = " + cached + " (cache size: " + dpToPxCache.size() + ")");
             return cached;
         }
         
         // Calcular e cachear
+        long startTime = System.nanoTime();
         int result = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
                 Float.parseFloat(dp + ""), mResources.getDisplayMetrics());
+        long calcTime = (System.nanoTime() - startTime) / 1000; // microsegundos
+        
         dpToPxCache.put(dp, result);
+        Log.v("OverlayService", "🔄 Cache MISS - dpToPx(" + dp + ") = " + result + " (calc: " + calcTime + "μs, cache size: " + dpToPxCache.size() + ")");
         return result;
     }
 
@@ -711,12 +757,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // Verificar cache primeiro
         Integer cached = pxToDpCache.get(px);
         if (cached != null) {
+            Log.v("OverlayService", "💾 Cache HIT - pxToDp(" + px + ") = " + cached + " (cache size: " + pxToDpCache.size() + ")");
             return cached;
         }
         
         // Calcular e cachear
+        long startTime = System.nanoTime();
         double result = (double) px / mResources.getDisplayMetrics().density;
+        long calcTime = (System.nanoTime() - startTime) / 1000; // microsegundos
+        
         pxToDpCache.put(px, (int) result);
+        Log.v("OverlayService", "🔄 Cache MISS - pxToDp(" + px + ") = " + result + " (calc: " + calcTime + "μs, cache size: " + pxToDpCache.size() + ")");
         return result;
     }
 

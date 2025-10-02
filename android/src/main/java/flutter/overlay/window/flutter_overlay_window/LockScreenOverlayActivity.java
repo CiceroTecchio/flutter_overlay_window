@@ -35,7 +35,7 @@ public class LockScreenOverlayActivity extends Activity {
     private BroadcastReceiver closeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            Log.d("LockScreenOverlay", "Broadcast recebido, fechando activity");
+            Log.i("LockScreenOverlay", "📡 Broadcast CLOSE recebido - Fechando LockScreenOverlayActivity");
             finish();
             isRunning = false;
         }
@@ -44,13 +44,15 @@ public class LockScreenOverlayActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Log.d("LockScreenOverlay", "onCreate chamado");
+        Log.i("LockScreenOverlay", "🚀 onCreate() - Iniciando LockScreenOverlayActivity");
+        
         IntentFilter filter = new IntentFilter("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(closeReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
             registerReceiver(closeReceiver, filter);
         }
+        Log.d("LockScreenOverlay", "📡 BroadcastReceiver registrado para fechamento");
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
@@ -71,16 +73,21 @@ public class LockScreenOverlayActivity extends Activity {
         
         resources = getResources();
 
+        Log.d("LockScreenOverlay", "🔍 Buscando FlutterEngine no cache global");
         flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         if (flutterEngine == null) {
-            Log.e("LockScreenOverlay", "FlutterEngine não encontrado");
+            Log.e("LockScreenOverlay", "❌ FlutterEngine não encontrado no cache global");
             finish();
             isRunning = false;
             return;
         }
+        Log.i("LockScreenOverlay", "♻️ REUTILIZANDO FlutterEngine do cache global");
+        
+        Log.d("LockScreenOverlay", "🔄 Resumindo FlutterEngine lifecycle");
         flutterEngine.getLifecycleChannel().appIsResumed();
 
         isRunning = true;
+        Log.d("LockScreenOverlay", "✅ LockScreenOverlayActivity marcado como running");
         flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
         overlayMessageChannel = new BasicMessageChannel<>(flutterEngine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
 
@@ -101,17 +108,26 @@ public class LockScreenOverlayActivity extends Activity {
         Intent intent = getIntent();
         int width = intent.getIntExtra("width", 300);
         int height = intent.getIntExtra("height", 300);
+        Log.d("LockScreenOverlay", "📐 Dimensões recebidas - Width: " + width + ", Height: " + height);
 
        
         final int pxWidth = (width == -1999 || width == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(width);
         final int pxHeight = (height == -1999 || height == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(height);
+        Log.d("LockScreenOverlay", "📏 Dimensões em pixels - Width: " + pxWidth + ", Height: " + pxHeight);
 
+        Log.d("LockScreenOverlay", "🎬 Criando FlutterView para LockScreen");
         new Handler(getMainLooper()).post(() -> {
+            long startTime = System.currentTimeMillis();
+            
             flutterView = new FlutterView(this, new FlutterTextureView(this));
+            Log.d("LockScreenOverlay", "🔌 Conectando FlutterView ao FlutterEngine");
             flutterView.attachToFlutterEngine(flutterEngine);
             flutterView.setBackgroundColor(Color.TRANSPARENT);
             flutterView.setFocusable(true);
             flutterView.setFocusableInTouchMode(true);
+            
+            long creationTime = System.currentTimeMillis() - startTime;
+            Log.i("LockScreenOverlay", "✅ FlutterView criada em " + creationTime + "ms");
 
             FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(pxWidth, pxHeight);
             layoutParams.gravity = Gravity.CENTER;
@@ -121,33 +137,42 @@ public class LockScreenOverlayActivity extends Activity {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT));
             root.addView(flutterView, layoutParams);
+            Log.d("LockScreenOverlay", "📱 FlutterView adicionada ao layout");
 
             setContentView(root);
+            Log.i("LockScreenOverlay", "✅ LockScreenOverlayActivity configurada com sucesso");
         });
     }
 
     @Override
-    
     public void onDestroy() {
+        Log.i("LockScreenOverlay", "🗑️ onDestroy() - Iniciando destruição do LockScreenOverlayActivity");
+        
         super.onDestroy();
+        Log.d("LockScreenOverlay", "📡 Desregistrando closeReceiver");
         unregisterReceiver(closeReceiver);
-        Log.d("LockScreenOverlay", "Destroying the overlay lock screen window service");
+        
         try{
             FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
             if (engine != null) {
-                Log.d("LockScreenOverlay", "Parando som do ringtone");
+                Log.d("LockScreenOverlay", "📞 Chamando onOverlayClosed no Flutter");
                 new MethodChannel(engine.getDartExecutor(), "my_custom_overlay_channel").invokeMethod("onOverlayClosed", null);
+            } else {
+                Log.w("LockScreenOverlay", "⚠️ FlutterEngine nulo, não foi possível chamar onOverlayClosed");
             }
         } catch (Exception e) {
-            Log.d("LockScreenOverlay", "Falha ao parar som do ringtone");
+            Log.e("LockScreenOverlay", "❌ Falha ao chamar onOverlayClosed", e);
             e.printStackTrace();
         }
         
        if (flutterView != null) {
+            Log.d("LockScreenOverlay", "🔌 Desconectando FlutterView do FlutterEngine");
             flutterView.detachFromFlutterEngine();
-            flutterView = null; // opcional
+            flutterView = null;
         }
+        
         isRunning = false;
+        Log.i("LockScreenOverlay", "✅ LockScreenOverlayActivity destruída com sucesso");
     }
 
     private int dpToPx(int dp) {

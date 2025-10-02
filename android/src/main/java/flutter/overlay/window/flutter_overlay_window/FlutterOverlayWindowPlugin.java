@@ -93,7 +93,10 @@ public class FlutterOverlayWindowPlugin implements
                 result.success(true);
             }
         } else if (call.method.equals("showOverlay")) {
+            Log.i("FlutterOverlayWindowPlugin", "🎬 showOverlay() - Iniciando overlay");
+            
             if (!checkOverlayPermission()) {
+                Log.w("FlutterOverlayWindowPlugin", "⚠️ Permissão de overlay não concedida");
                 result.error("PERMISSION", "overlay permission is not enabled", null);
                 return;
             }
@@ -190,6 +193,7 @@ public class FlutterOverlayWindowPlugin implements
                     return;
                 }
             }
+            Log.i("FlutterOverlayWindowPlugin", "✅ showOverlay() - Overlay iniciado com sucesso");
             result.success(null);
         } else if (call.method.equals("isOverlayActive")) {
             result.success(OverlayService.isRunning);
@@ -273,16 +277,26 @@ public class FlutterOverlayWindowPlugin implements
         binding.addActivityResultListener(this);
         if (FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG) == null) {
             try {
+                Log.i("FlutterOverlayWindowPlugin", "🆕 CRIANDO FLUTTER ENGINE no Plugin");
+                long startTime = System.currentTimeMillis();
+                
                 FlutterEngineGroup enn = new FlutterEngineGroup(context);
                 DartExecutor.DartEntrypoint dEntry = new DartExecutor.DartEntrypoint(
                         FlutterInjector.instance().flutterLoader().findAppBundlePath(),
                         "overlayMain");
                 FlutterEngine engine = enn.createAndRunEngine(context, dEntry);
+                
+                long creationTime = System.currentTimeMillis() - startTime;
+                Log.i("FlutterOverlayWindowPlugin", "✅ FlutterEngine criada no Plugin em " + creationTime + "ms");
+                
                 FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
+                Log.d("FlutterOverlayWindowPlugin", "💾 Engine armazenada no cache global");
             } catch (Exception e) {
-                Log.e("FlutterOverlayWindowPlugin", "Failed to create Flutter engine in onAttachedToActivity: " + e.getMessage());
+                Log.e("FlutterOverlayWindowPlugin", "❌ Falha ao criar FlutterEngine no Plugin: " + e.getMessage());
                 e.printStackTrace();
             }
+        } else {
+            Log.i("FlutterOverlayWindowPlugin", "♻️ REUTILIZANDO FLUTTER ENGINE do cache global");
         }
     }
 
