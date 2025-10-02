@@ -61,7 +61,6 @@ public class LockScreenOverlayActivity extends Activity {
         }
 
         getWindow().addFlags(
-            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD |
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS |
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
