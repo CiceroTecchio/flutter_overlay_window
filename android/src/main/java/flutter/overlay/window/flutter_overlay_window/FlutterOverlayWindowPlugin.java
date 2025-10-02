@@ -95,12 +95,15 @@ public class FlutterOverlayWindowPlugin implements
         } else if (call.method.equals("showOverlay")) {
             Log.i("FlutterOverlayWindowPlugin", "🎬 showOverlay() - Iniciando overlay");
             Log.d("FlutterOverlayWindowPlugin", "📊 Estado atual do OverlayService - isRunning: " + OverlayService.isRunning);
+            Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 1: showOverlay() chamado com sucesso");
             
             if (!checkOverlayPermission()) {
                 Log.w("FlutterOverlayWindowPlugin", "⚠️ Permissão de overlay não concedida");
+                Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 2: Falha na verificação de permissão");
                 result.error("PERMISSION", "overlay permission is not enabled", null);
                 return;
             }
+            Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 2: Permissão de overlay verificada com sucesso");
             Integer height = call.argument("height");
             Integer width = call.argument("width");
             String alignment = call.argument("alignment");
@@ -113,12 +116,16 @@ public class FlutterOverlayWindowPlugin implements
             Map<String, Integer> startPosition = call.argument("startPosition");
             int startX = startPosition != null ? startPosition.getOrDefault("x", OverlayConstants.DEFAULT_XY) : OverlayConstants.DEFAULT_XY;
             int startY = startPosition != null ? startPosition.getOrDefault("y", OverlayConstants.DEFAULT_XY) : OverlayConstants.DEFAULT_XY;
+            
+            Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 3: Parâmetros extraídos com sucesso");
 
             PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
             KeyguardManager keyguardManager = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
 
             boolean isScreenOff = powerManager != null && !powerManager.isInteractive();
             boolean isLocked = keyguardManager != null && keyguardManager.isKeyguardLocked();
+            
+            Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 4: Verificações de tela concluídas - isScreenOff: " + isScreenOff + ", isLocked: " + isLocked);
 
             boolean lockScreenIntent = false;
 
@@ -126,10 +133,12 @@ public class FlutterOverlayWindowPlugin implements
 
             if ("lockScreen".equals(flag) && (isScreenOff || isLocked)) {
                 lockScreenIntent = true;
+                Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 5: LockScreen intent ativado");
             } else {
                 if (flag == null || "lockScreen".equals(flag)) {
                     lockScreenFlag = "flagNotFocusable";
                 }
+                Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 5: Overlay normal será usado");
             }
 
             WindowSetup.width = width != null ? width : -1;
@@ -141,6 +150,8 @@ public class FlutterOverlayWindowPlugin implements
             WindowSetup.overlayContent = overlayContent == null ? "" : overlayContent;
             WindowSetup.positionGravity = positionGravity;
             WindowSetup.setNotificationVisibility(notificationVisibility);
+            
+            Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 6: WindowSetup configurado com sucesso");
 
             if (lockScreenIntent) {
                 if (LockScreenOverlayActivity.isRunning) {
@@ -175,10 +186,12 @@ public class FlutterOverlayWindowPlugin implements
                 }
             } else {
                 try {
+                    Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 7: Iniciando OverlayService normal");
                     Log.d("FlutterOverlayWindowPlugin", "🚀 Iniciando OverlayService normal");
                     
                     // 🔧 SOLUÇÃO: Parar o service primeiro se estiver rodando
                     if (OverlayService.isRunning) {
+                        Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 8: Service já está rodando, parando primeiro...");
                         Log.d("FlutterOverlayWindowPlugin", "🛑 Service já está rodando, parando primeiro...");
                         final Intent stopIntent = new Intent(context, OverlayService.class);
                         stopIntent.putExtra("isCloseWindow", true);
@@ -186,14 +199,18 @@ public class FlutterOverlayWindowPlugin implements
                         
                         // Aguardar um pouco para o service parar
                         try {
-                            Thread.sleep(100);
+                            Thread.sleep(200); // Aumentei o tempo de espera
                         } catch (InterruptedException e) {
                             Log.w("FlutterOverlayWindowPlugin", "⚠️ Interrupção durante sleep: " + e.getMessage());
                         }
                         
                         Log.d("FlutterOverlayWindowPlugin", "✅ Service parado, iniciando novo...");
+                        Log.d("FlutterOverlayWindowPlugin", "📊 Estado após parar - isRunning: " + OverlayService.isRunning);
+                    } else {
+                        Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 8: Service não está rodando, prosseguindo diretamente");
                     }
                     
+                    Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 9: Criando Intent para OverlayService");
                     final Intent intent = new Intent(context, OverlayService.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -208,8 +225,10 @@ public class FlutterOverlayWindowPlugin implements
                     
                     Log.d("FlutterOverlayWindowPlugin", "📦 Parâmetros enviados - Width: " + width + ", Height: " + height + ", StartX: " + startX + ", StartY: " + startY);
                     
+                    Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 10: Chamando context.startService()");
                     Log.d("FlutterOverlayWindowPlugin", "🚀 Chamando context.startService()...");
                     context.startService(intent);
+                    Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 11: startService() executado com sucesso");
                     Log.d("FlutterOverlayWindowPlugin", "✅ OverlayService.startService() chamado com sucesso");
                     
                     // Verificar se o service está rodando após a chamada
@@ -221,6 +240,7 @@ public class FlutterOverlayWindowPlugin implements
                     return;
                 }
             }
+            Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 12: showOverlay() concluído com sucesso");
             Log.i("FlutterOverlayWindowPlugin", "✅ showOverlay() - Overlay iniciado com sucesso");
             result.success(null);
         } else if (call.method.equals("isOverlayActive")) {
