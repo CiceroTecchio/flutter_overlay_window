@@ -90,7 +90,7 @@ public class LockScreenOverlayActivity extends Activity {
                     flutterEngine.getLifecycleChannel().appIsResumed();
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error resuming engine: " + e.getMessage());
+                Log.e("LockScreenOverlay", "Error resuming engine: " + e.getMessage());
                 safeFinish();
                 return;
             }
