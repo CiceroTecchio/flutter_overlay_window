@@ -91,8 +91,6 @@ public class LockScreenOverlayActivity extends Activity {
                 }
             } catch (Exception e) {
                 Log.e("LockScreenOverlay", "Error resuming engine: " + e.getMessage());
-                safeFinish();
-                return;
             }
 
         isRunning = true;
