@@ -195,6 +195,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
         isRunning = false;
         instance = null;
         
+        // Garantir que as variáveis sejam resetadas
+        windowManager = null;
+        flutterView = null;
+        
         // Limpar cache de conversões
         int dpCacheSize = dpToPxCache.size();
         int pxCacheSize = pxToDpCache.size();
@@ -268,6 +272,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     private void initOverlay(Intent intent) {
         Log.d("OverlayService", "🔧 initOverlay() - Iniciando configuração do overlay");
+        Log.d("OverlayService", "📊 Estado atual - isRunning: " + isRunning + ", windowManager: " + (windowManager != null) + ", flutterView: " + (flutterView != null));
         
         int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
         int startY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
@@ -288,20 +293,24 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
 
         if (windowManager != null && flutterView != null) {
+                Log.d("OverlayService", "🔄 Overlay já ativo, removendo anterior");
                 windowManager.removeView(flutterView);
                 flutterView.detachFromFlutterEngine();
                 windowManager = null;
+                flutterView = null;
                 stopSelf();
         }
 
         isRunning = true;
+        Log.d("OverlayService", "✅ Marcando overlay como running");
         Log.d("onStartCommand", "Service started");
 
         FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         if (engine == null) {
-            Log.e("OverlayService", "FlutterEngine não encontrado no cache");
+            Log.e("OverlayService", "❌ FlutterEngine não encontrado no cache");
             return;
         }
+        Log.d("OverlayService", "✅ FlutterEngine encontrado no cache");
         if (flutterChannel == null) {
             flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
             flutterChannel.setMethodCallHandler((call, result) -> {
