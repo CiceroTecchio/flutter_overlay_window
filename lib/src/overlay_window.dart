@@ -210,7 +210,6 @@ class FlutterOverlayWindow {
     _cachedChannel = null;
     _cachedOverlayChannel = null;
     _cachedMessageChannel = null;
-    _lastOverlayParams.clear();
   }
 
   /// Check if the lock screen permission is granted
