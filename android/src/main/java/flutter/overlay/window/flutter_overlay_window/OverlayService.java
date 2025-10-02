@@ -201,7 +201,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
         dpToPxCache.clear();
         pxToDpCache.clear();
         cachedLayoutParams = null;
-        cachedEngine = null;
         
         Log.d("OverlayService", "📊 Cache limpo - DP cache: " + dpCacheSize + " itens, PX cache: " + pxCacheSize + " itens");
 
@@ -231,10 +230,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
     @Override
     public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
+        Log.i("OverlayService", "🎬 onStartCommand() - Intent recebido");
+        
         if (intent == null) {
+            Log.w("OverlayService", "⚠️ Intent nulo, retornando START_NOT_STICKY");
             return START_NOT_STICKY;
         }
+        
         String action = intent.getAction();
+        Log.d("OverlayService", "📋 Action do Intent: " + (action != null ? action : "null"));
 
         // 🔹 Se overlay já ativo e ação for apenas trazer para frente
         if (windowManager != null && flutterView != null && "SHOW_OVERLAY_AGAIN".equals(action)) {
@@ -254,18 +258,25 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
 
         mResources = getApplicationContext().getResources();
+        Log.d("OverlayService", "📦 Iniciando initOverlay()");
 
         initOverlay(intent);
+        Log.d("OverlayService", "✅ initOverlay() concluído");
 
         return START_STICKY;
     }
 
     private void initOverlay(Intent intent) {
+        Log.d("OverlayService", "🔧 initOverlay() - Iniciando configuração do overlay");
+        
         int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
         int startY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
         boolean isCloseWindow = intent.getBooleanExtra(INTENT_EXTRA_IS_CLOSE_WINDOW, false);
+        
+        Log.d("OverlayService", "📐 Parâmetros recebidos - StartX: " + startX + ", StartY: " + startY + ", IsClose: " + isCloseWindow);
 
         if (isCloseWindow) {
+            Log.d("OverlayService", "🚪 Fechando overlay conforme solicitado");
             if (windowManager != null) {
                     windowManager.removeView(flutterView);
                     flutterView.detachFromFlutterEngine();
@@ -332,11 +343,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
 
             engine.getLifecycleChannel().appIsResumed();
+            
+            Log.d("OverlayService", "🎬 Criando FlutterView");
+            long startTime = System.currentTimeMillis();
             flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
+            long creationTime = System.currentTimeMillis() - startTime;
+            Log.i("OverlayService", "✅ FlutterView criada em " + creationTime + "ms");
+            
+            Log.d("OverlayService", "🔌 Conectando FlutterView ao FlutterEngine");
             flutterView.attachToFlutterEngine(engine);
             flutterView.setFitsSystemWindows(true);
             flutterView.setFocusable(true);
             flutterView.setFocusableInTouchMode(true);
+            Log.d("OverlayService", "✅ FlutterView configurada com sucesso");
             flutterView.setBackgroundColor(Color.TRANSPARENT);
             flutterView.setOnTouchListener(this);
 
@@ -385,8 +404,18 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
             params.gravity = WindowSetup.gravity;
 
-            windowManager.addView(flutterView, params);
-            moveOverlayInternal(dx, dy, null);
+            Log.d("OverlayService", "📱 Adicionando FlutterView ao WindowManager");
+            try {
+                windowManager.addView(flutterView, params);
+                Log.i("OverlayService", "✅ FlutterView adicionada ao WindowManager com sucesso");
+                
+                Log.d("OverlayService", "🎯 Movendo overlay para posição inicial");
+                moveOverlayInternal(dx, dy, null);
+                Log.i("OverlayService", "✅ Overlay posicionado com sucesso");
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Erro ao adicionar FlutterView ao WindowManager: " + e.getMessage());
+                e.printStackTrace();
+            }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
@@ -578,10 +607,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
-    // Cache estático para evitar recriações desnecessárias
-    private static volatile FlutterEngine cachedEngine;
-    private static final Object engineLock = new Object();
-    
     @Override
     public void onCreate() { // Get the cached FlutterEngine
         Log.d("OverlayService", "🚀 onCreate() - Iniciando OverlayService");
@@ -595,47 +620,28 @@ public class OverlayService extends Service implements View.OnTouchListener {
         registerReceiver(screenReceiver, filter);
         registerScreenUnlockReceiver();
         
-        // Otimização: Verificar cache local primeiro (mais rápido)
-        FlutterEngine flutterEngine = cachedEngine;
+        // Usar apenas o cache global do Flutter (mais confiável)
+        FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         
         if (flutterEngine == null) {
-            Log.d("OverlayService", "🔍 Cache local vazio, verificando cache global...");
-            synchronized (engineLock) {
-                // Double-check locking pattern
-                flutterEngine = cachedEngine;
-                if (flutterEngine == null) {
-                    // Verificar cache global como fallback
-                    flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-                    
-                    if (flutterEngine == null) {
-                        Log.i("OverlayService", "🆕 CRIANDO NOVA FLUTTER ENGINE - Cache vazio");
-                        long startTime = System.currentTimeMillis();
-                        
-                        FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
-                        DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
-                                FlutterInjector.instance().flutterLoader().findAppBundlePath(),
-                                "overlayMain");
+            Log.i("OverlayService", "🆕 CRIANDO NOVA FLUTTER ENGINE - Cache global vazio");
+            long startTime = System.currentTimeMillis();
+            
+            FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
+            DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
+                    FlutterInjector.instance().flutterLoader().findAppBundlePath(),
+                    "overlayMain");
 
-                        flutterEngine = engineGroup.createAndRunEngine(this, entryPoint);
-                        
-                        long creationTime = System.currentTimeMillis() - startTime;
-                        Log.i("OverlayService", "✅ FlutterEngine criada em " + creationTime + "ms");
-                        
-                        // Cache em ambos os locais para performance
-                        FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
-                        cachedEngine = flutterEngine;
-                        Log.d("OverlayService", "💾 Engine armazenada no cache local e global");
-                    } else {
-                        // Usar engine do cache global
-                        Log.i("OverlayService", "♻️ REUTILIZANDO ENGINE do cache global");
-                        cachedEngine = flutterEngine;
-                    }
-                } else {
-                    Log.d("OverlayService", "♻️ REUTILIZANDO ENGINE do cache local (double-check)");
-                }
-            }
+            flutterEngine = engineGroup.createAndRunEngine(this, entryPoint);
+            
+            long creationTime = System.currentTimeMillis() - startTime;
+            Log.i("OverlayService", "✅ FlutterEngine criada em " + creationTime + "ms");
+            
+            // Armazenar no cache global
+            FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
+            Log.d("OverlayService", "💾 Engine armazenada no cache global");
         } else {
-            Log.i("OverlayService", "♻️ REUTILIZANDO ENGINE do cache local");
+            Log.i("OverlayService", "♻️ REUTILIZANDO ENGINE do cache global");
         }
 
         // Create the MethodChannel with the properly initialized FlutterEngine

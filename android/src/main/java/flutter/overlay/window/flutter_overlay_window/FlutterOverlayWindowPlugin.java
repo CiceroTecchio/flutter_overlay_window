@@ -174,6 +174,7 @@ public class FlutterOverlayWindowPlugin implements
                 }
             } else {
                 try {
+                    Log.d("FlutterOverlayWindowPlugin", "🚀 Iniciando OverlayService normal");
                     final Intent intent = new Intent(context, OverlayService.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -185,9 +186,13 @@ public class FlutterOverlayWindowPlugin implements
                     intent.putExtra("alignment", alignment);
                     intent.putExtra("overlayTitle", overlayTitle);
                     intent.putExtra("overlayContent", overlayContent);
+                    
+                    Log.d("FlutterOverlayWindowPlugin", "📦 Parâmetros enviados - Width: " + width + ", Height: " + height + ", StartX: " + startX + ", StartY: " + startY);
+                    
                     context.startService(intent);
+                    Log.d("FlutterOverlayWindowPlugin", "✅ OverlayService.startService() chamado com sucesso");
                 } catch (Exception e) {
-                    Log.e("OverlayPlugin", "Failed to start OverlayService: " + e.getMessage());
+                    Log.e("FlutterOverlayWindowPlugin", "❌ Falha ao iniciar OverlayService: " + e.getMessage());
                     e.printStackTrace();
                     result.error("SERVICE_ERROR", "Failed to start overlay service", e.getMessage());
                     return;
