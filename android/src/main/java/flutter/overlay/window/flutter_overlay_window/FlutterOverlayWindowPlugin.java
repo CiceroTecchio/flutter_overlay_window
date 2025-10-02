@@ -189,28 +189,6 @@ public class FlutterOverlayWindowPlugin implements
                     Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 7: Iniciando OverlayService normal");
                     Log.d("FlutterOverlayWindowPlugin", "🚀 Iniciando OverlayService normal");
                     
-                    // 🔧 SOLUÇÃO: Parar o service primeiro se estiver rodando
-                    if (OverlayService.isRunning) {
-                        Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 8: Service já está rodando, parando primeiro...");
-                        Log.d("FlutterOverlayWindowPlugin", "🛑 Service já está rodando, parando primeiro...");
-                        final Intent stopIntent = new Intent(context, OverlayService.class);
-                        stopIntent.putExtra("isCloseWindow", true);
-                        context.startService(stopIntent);
-                        
-                        // Aguardar um pouco para o service parar
-                        try {
-                            Thread.sleep(200); // Aumentei o tempo de espera
-                        } catch (InterruptedException e) {
-                            Log.w("FlutterOverlayWindowPlugin", "⚠️ Interrupção durante sleep: " + e.getMessage());
-                        }
-                        
-                        Log.d("FlutterOverlayWindowPlugin", "✅ Service parado, iniciando novo...");
-                        Log.d("FlutterOverlayWindowPlugin", "📊 Estado após parar - isRunning: " + OverlayService.isRunning);
-                    } else {
-                        Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 8: Service não está rodando, prosseguindo diretamente");
-                    }
-                    
-                    Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 9: Criando Intent para OverlayService");
                     final Intent intent = new Intent(context, OverlayService.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);

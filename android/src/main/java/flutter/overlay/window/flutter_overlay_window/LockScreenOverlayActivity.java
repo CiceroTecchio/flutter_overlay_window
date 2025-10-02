@@ -83,7 +83,17 @@ public class LockScreenOverlayActivity extends Activity {
         Log.i("LockScreenOverlay", "♻️ REUTILIZANDO FlutterEngine do cache global");
         
         Log.d("LockScreenOverlay", "🔄 Resumindo FlutterEngine lifecycle");
-        flutterEngine.getLifecycleChannel().appIsResumed();
+
+            // Safe engine lifecycle management
+            try {
+                if (flutterEngine.getLifecycleChannel() != null) {
+                    flutterEngine.getLifecycleChannel().appIsResumed();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error resuming engine: " + e.getMessage());
+                safeFinish();
+                return;
+            }
 
         isRunning = true;
         Log.d("LockScreenOverlay", "✅ LockScreenOverlayActivity marcado como running");
