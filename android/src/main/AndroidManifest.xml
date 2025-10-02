@@ -14,11 +14,5 @@
             android:turnScreenOn="true"
             android:exported="true"
             android:excludeFromRecents="true" />
-        
-        <service
-            android:name=".OverlayService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
     </application>
 </manifest>
