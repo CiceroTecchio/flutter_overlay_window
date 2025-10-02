@@ -176,6 +176,24 @@ public class FlutterOverlayWindowPlugin implements
             } else {
                 try {
                     Log.d("FlutterOverlayWindowPlugin", "🚀 Iniciando OverlayService normal");
+                    
+                    // 🔧 SOLUÇÃO: Parar o service primeiro se estiver rodando
+                    if (OverlayService.isRunning) {
+                        Log.d("FlutterOverlayWindowPlugin", "🛑 Service já está rodando, parando primeiro...");
+                        final Intent stopIntent = new Intent(context, OverlayService.class);
+                        stopIntent.putExtra("isCloseWindow", true);
+                        context.startService(stopIntent);
+                        
+                        // Aguardar um pouco para o service parar
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException e) {
+                            Log.w("FlutterOverlayWindowPlugin", "⚠️ Interrupção durante sleep: " + e.getMessage());
+                        }
+                        
+                        Log.d("FlutterOverlayWindowPlugin", "✅ Service parado, iniciando novo...");
+                    }
+                    
                     final Intent intent = new Intent(context, OverlayService.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
