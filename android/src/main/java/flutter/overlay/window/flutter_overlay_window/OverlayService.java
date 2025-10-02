@@ -267,6 +267,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         initOverlay(intent);
         Log.d("OverlayService", "✅ initOverlay() concluído");
+        
+        // Verificar se o overlay foi realmente criado
+        Log.d("OverlayService", "📊 Estado final - isRunning: " + isRunning + ", windowManager: " + (windowManager != null) + ", flutterView: " + (flutterView != null));
 
         return START_STICKY;
     }
@@ -304,7 +307,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
 
         isRunning = true;
+        instance = this; // Garantir que instance seja definido
         Log.d("OverlayService", "✅ Marcando overlay como running");
+        Log.d("OverlayService", "✅ Instance definido: " + (instance != null));
         Log.d("onStartCommand", "Service started");
 
         // Verificar FlutterEngine no onStartCommand (não apenas no onCreate)

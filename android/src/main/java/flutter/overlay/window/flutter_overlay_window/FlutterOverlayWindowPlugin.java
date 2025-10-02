@@ -94,6 +94,7 @@ public class FlutterOverlayWindowPlugin implements
             }
         } else if (call.method.equals("showOverlay")) {
             Log.i("FlutterOverlayWindowPlugin", "🎬 showOverlay() - Iniciando overlay");
+            Log.d("FlutterOverlayWindowPlugin", "📊 Estado atual do OverlayService - isRunning: " + OverlayService.isRunning);
             
             if (!checkOverlayPermission()) {
                 Log.w("FlutterOverlayWindowPlugin", "⚠️ Permissão de overlay não concedida");
