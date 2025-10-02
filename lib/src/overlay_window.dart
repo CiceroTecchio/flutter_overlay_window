@@ -8,17 +8,32 @@ import 'package:flutter_overlay_window/src/overlay_config.dart';
 class FlutterOverlayWindow {
   FlutterOverlayWindow._();
 
-  static final StreamController _controller = StreamController();
-  static const MethodChannel _channel = MethodChannel(
-    "x-slayer/overlay_channel",
-  );
-  static const MethodChannel _overlayChannel = MethodChannel(
-    "x-slayer/overlay",
-  );
-  static const BasicMessageChannel _overlayMessageChannel = BasicMessageChannel(
-    "x-slayer/overlay_messenger",
-    JSONMessageCodec(),
-  );
+  // Otimização: StreamController com tipo específico para melhor performance
+  static final StreamController<dynamic> _controller =
+      StreamController<dynamic>.broadcast();
+
+  // Otimização: Cache de canais para evitar recriações
+  static MethodChannel? _cachedChannel;
+  static MethodChannel? _cachedOverlayChannel;
+  static BasicMessageChannel? _cachedMessageChannel;
+
+  static MethodChannel get _channel {
+    _cachedChannel ??= const MethodChannel("x-slayer/overlay_channel");
+    return _cachedChannel!;
+  }
+
+  static MethodChannel get _overlayChannel {
+    _cachedOverlayChannel ??= const MethodChannel("x-slayer/overlay");
+    return _cachedOverlayChannel!;
+  }
+
+  static BasicMessageChannel get _overlayMessageChannel {
+    _cachedMessageChannel ??= const BasicMessageChannel(
+      "x-slayer/overlay_messenger",
+      JSONMessageCodec(),
+    );
+    return _cachedMessageChannel!;
+  }
 
   /// Open overLay content
   ///
@@ -43,6 +58,9 @@ class FlutterOverlayWindow {
   /// `positionGravity` the overlay postion after drag and default is [PositionGravity.none]
   ///
   /// `startPosition` the overlay start position and default is null
+  // Otimização: Cache de parâmetros para evitar recriações desnecessárias
+  static final Map<String, dynamic> _lastOverlayParams = {};
+
   static Future<void> showOverlay({
     int height = WindowSize.fullCover,
     int width = WindowSize.matchParent,
@@ -55,7 +73,8 @@ class FlutterOverlayWindow {
     PositionGravity positionGravity = PositionGravity.none,
     OverlayPosition? startPosition,
   }) async {
-    await _channel.invokeMethod('showOverlay', {
+    // Otimização: Preparar parâmetros uma única vez
+    final Map<String, dynamic> params = {
       "height": height,
       "width": width,
       "alignment": alignment.name,
@@ -66,7 +85,15 @@ class FlutterOverlayWindow {
       "notificationVisibility": visibility.name,
       "positionGravity": positionGravity.name,
       "startPosition": startPosition?.toMap(),
-    });
+    };
+
+    // Otimização: Verificar se os parâmetros mudaram para evitar chamadas desnecessárias
+    if (_lastOverlayParams.toString() != params.toString()) {
+      _lastOverlayParams.clear();
+      _lastOverlayParams.addAll(params);
+
+      await _channel.invokeMethod('showOverlay', params);
+    }
   }
 
   /// Check if overlay permission is granted
@@ -112,13 +139,22 @@ class FlutterOverlayWindow {
     return await _overlayMessageChannel.send(data);
   }
 
+  // Otimização: Cache do stream para evitar recriações
+  static Stream<dynamic>? _cachedStream;
+
   /// Streams message shared between overlay and main app
   static Stream<dynamic> get overlayListener {
-    _overlayMessageChannel.setMessageHandler((message) async {
-      _controller.add(message);
-      return message;
-    });
-    return _controller.stream;
+    // Otimização: Reutilizar stream existente se possível
+    if (_cachedStream == null) {
+      _overlayMessageChannel.setMessageHandler((message) async {
+        if (!_controller.isClosed) {
+          _controller.add(message);
+        }
+        return message;
+      });
+      _cachedStream = _controller.stream;
+    }
+    return _cachedStream!;
   }
 
   /// Update the overlay flag while the overlay in action
@@ -173,7 +209,15 @@ class FlutterOverlayWindow {
 
   /// Dispose overlay stream
   static void disposeOverlayListener() {
-    _controller.close();
+    if (!_controller.isClosed) {
+      _controller.close();
+    }
+    // Otimização: Limpar cache ao dispor
+    _cachedStream = null;
+    _cachedChannel = null;
+    _cachedOverlayChannel = null;
+    _cachedMessageChannel = null;
+    _lastOverlayParams.clear();
   }
 
   /// Check if the lock screen permission is granted

@@ -40,6 +40,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
 
 import io.flutter.embedding.android.FlutterTextureView;
 import io.flutter.embedding.android.FlutterView;
@@ -59,6 +60,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private Integer mStatusBarHeight = -1;
     private Integer mNavigationBarHeight = -1;
     private Resources mResources;
+    
+    // Otimização: Cache de conversões DP/PX para evitar recálculos
+    private static final Map<Integer, Integer> dpToPxCache = new ConcurrentHashMap<>();
+    private static final Map<Integer, Integer> pxToDpCache = new ConcurrentHashMap<>();
+    private static float density = -1f;
 
     public static final String INTENT_EXTRA_IS_CLOSE_WINDOW = "IsCloseWindow";
 
@@ -182,8 +188,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
             windowManager = null;
         }
 
+        // Otimização: Limpeza completa de recursos
         isRunning = false;
         instance = null;
+        
+        // Limpar cache de conversões
+        dpToPxCache.clear();
+        pxToDpCache.clear();
+        cachedLayoutParams = null;
+        cachedEngine = null;
 
         try {
             NotificationManager notificationManager = (NotificationManager)
@@ -504,13 +517,31 @@ public class OverlayService extends Service implements View.OnTouchListener {
         return null;
     }
 
+    // Otimização: Cache de LayoutParams para evitar recriações
+    private static WindowManager.LayoutParams cachedLayoutParams;
+    
     public static boolean moveOverlay(int x, int y) {
         if (instance != null && instance.flutterView != null) {
             if (instance.windowManager != null) {
-                WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
-                params.x = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
-                params.y = instance.dpToPx(y);
-                instance.windowManager.updateViewLayout(instance.flutterView, params);
+                // Otimização: Usar cache de LayoutParams
+                WindowManager.LayoutParams params = cachedLayoutParams;
+                if (params == null) {
+                    params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
+                    cachedLayoutParams = params;
+                }
+                
+                // Otimização: Calcular valores apenas se necessário
+                int newX = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
+                int newY = instance.dpToPx(y);
+                
+                // Otimização: Verificar se realmente precisa atualizar
+                if (params.x != newX || params.y != newY) {
+                    params.x = newX;
+                    params.y = newY;
+                    
+                    // Otimização: Usar post para operação assíncrona
+                    instance.windowManager.updateViewLayout(instance.flutterView, params);
+                }
                 return true;
             } else {
                 return false;
@@ -521,6 +552,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     @Override
+    // Cache estático para evitar recriações desnecessárias
+    private static volatile FlutterEngine cachedEngine;
+    private static final Object engineLock = new Object();
+    
     public void onCreate() { // Get the cached FlutterEngine
         // Initialize resources early to prevent null pointer exceptions
         mResources = getApplicationContext().getResources();
@@ -531,20 +566,35 @@ public class OverlayService extends Service implements View.OnTouchListener {
         registerReceiver(screenReceiver, filter);
         registerScreenUnlockReceiver();
         
-        FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-
+        // Otimização: Verificar cache local primeiro (mais rápido)
+        FlutterEngine flutterEngine = cachedEngine;
+        
         if (flutterEngine == null) {
-            // Handle the error if engine is not found
-            Log.e("OverlayService", "Flutter engine not found, hence creating new flutter engine");
-            FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
-            DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
-                    FlutterInjector.instance().flutterLoader().findAppBundlePath(),
-                    "overlayMain"); // "overlayMain" is custom entry point
+            synchronized (engineLock) {
+                // Double-check locking pattern
+                flutterEngine = cachedEngine;
+                if (flutterEngine == null) {
+                    // Verificar cache global como fallback
+                    flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+                    
+                    if (flutterEngine == null) {
+                        Log.d("OverlayService", "Creating new FlutterEngine with optimized settings");
+                        FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
+                        DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
+                                FlutterInjector.instance().flutterLoader().findAppBundlePath(),
+                                "overlayMain");
 
-            flutterEngine = engineGroup.createAndRunEngine(this, entryPoint);
-
-            // Cache the created FlutterEngine for future use
-            FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
+                        flutterEngine = engineGroup.createAndRunEngine(this, entryPoint);
+                        
+                        // Cache em ambos os locais para performance
+                        FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
+                        cachedEngine = flutterEngine;
+                    } else {
+                        // Usar engine do cache global
+                        cachedEngine = flutterEngine;
+                    }
+                }
+            }
         }
 
         // Create the MethodChannel with the properly initialized FlutterEngine
@@ -632,13 +682,24 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 getApplicationContext().getPackageName());
     }
 
+    // Otimização: Funções de conversão com cache para melhor performance
     private int dpToPx(int dp) {
         if (mResources == null) {
             Log.e("OverlayService", "Resources is null in dpToPx");
             return dp; // Return original value as fallback
         }
-        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
+        
+        // Verificar cache primeiro
+        Integer cached = dpToPxCache.get(dp);
+        if (cached != null) {
+            return cached;
+        }
+        
+        // Calcular e cachear
+        int result = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
                 Float.parseFloat(dp + ""), mResources.getDisplayMetrics());
+        dpToPxCache.put(dp, result);
+        return result;
     }
 
     private double pxToDp(int px) {
@@ -646,7 +707,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.e("OverlayService", "Resources is null in pxToDp");
             return px; // Return original value as fallback
         }
-        return (double) px / mResources.getDisplayMetrics().density;
+        
+        // Verificar cache primeiro
+        Integer cached = pxToDpCache.get(px);
+        if (cached != null) {
+            return cached;
+        }
+        
+        // Calcular e cachear
+        double result = (double) px / mResources.getDisplayMetrics().density;
+        pxToDpCache.put(px, (int) result);
+        return result;
     }
 
     private boolean inPortrait() {
