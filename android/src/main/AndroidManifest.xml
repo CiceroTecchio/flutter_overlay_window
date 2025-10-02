@@ -10,8 +10,6 @@
         <activity
             android:name=".LockScreenOverlayActivity"
             android:theme="@style/Theme.Transparent"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
             android:exported="true"
             android:excludeFromRecents="true" />
     </application>
