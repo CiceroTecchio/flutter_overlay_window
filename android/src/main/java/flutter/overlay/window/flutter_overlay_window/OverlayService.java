@@ -236,15 +236,18 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
         Log.i("OverlayService", "🎬 onStartCommand() - Intent recebido (tentativa #" + (isRunning ? "subsequente" : "primeira") + ")");
         Log.d("OverlayService", "🔍 onStartCommand chamado - startId: " + startId + ", flags: " + flags);
+        Log.d("OverlayService", "🔍 PONTO A: onStartCommand() INICIADO");
         
         if (intent == null) {
             Log.w("OverlayService", "⚠️ Intent nulo, retornando START_NOT_STICKY");
+            Log.d("OverlayService", "🔍 PONTO B: Intent nulo - FALHA");
             return START_NOT_STICKY;
         }
         
         String action = intent.getAction();
         Log.d("OverlayService", "📋 Action do Intent: " + (action != null ? action : "null"));
         Log.d("OverlayService", "📊 Estado antes - isRunning: " + isRunning + ", windowManager: " + (windowManager != null) + ", flutterView: " + (flutterView != null));
+        Log.d("OverlayService", "🔍 PONTO B: Intent válido - prosseguindo");
 
         // 🔹 Se overlay já ativo e ação for apenas trazer para frente
         if (windowManager != null && flutterView != null && "SHOW_OVERLAY_AGAIN".equals(action)) {
@@ -265,12 +268,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         mResources = getApplicationContext().getResources();
         Log.d("OverlayService", "📦 Iniciando initOverlay()");
+        Log.d("OverlayService", "🔍 PONTO C: Iniciando initOverlay()");
 
         initOverlay(intent);
         Log.d("OverlayService", "✅ initOverlay() concluído");
+        Log.d("OverlayService", "🔍 PONTO D: initOverlay() concluído");
         
         // Verificar se o overlay foi realmente criado
         Log.d("OverlayService", "📊 Estado final - isRunning: " + isRunning + ", windowManager: " + (windowManager != null) + ", flutterView: " + (flutterView != null));
+        Log.d("OverlayService", "🔍 PONTO E: onStartCommand() FINALIZADO");
 
         return START_STICKY;
     }
