@@ -190,8 +190,12 @@ public class FlutterOverlayWindowPlugin implements
                     
                     Log.d("FlutterOverlayWindowPlugin", "📦 Parâmetros enviados - Width: " + width + ", Height: " + height + ", StartX: " + startX + ", StartY: " + startY);
                     
+                    Log.d("FlutterOverlayWindowPlugin", "🚀 Chamando context.startService()...");
                     context.startService(intent);
                     Log.d("FlutterOverlayWindowPlugin", "✅ OverlayService.startService() chamado com sucesso");
+                    
+                    // Verificar se o service está rodando após a chamada
+                    Log.d("FlutterOverlayWindowPlugin", "📊 Estado após startService - isRunning: " + OverlayService.isRunning);
                 } catch (Exception e) {
                     Log.e("FlutterOverlayWindowPlugin", "❌ Falha ao iniciar OverlayService: " + e.getMessage());
                     e.printStackTrace();

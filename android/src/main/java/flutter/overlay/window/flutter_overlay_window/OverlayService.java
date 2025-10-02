@@ -235,6 +235,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @Override
     public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
         Log.i("OverlayService", "🎬 onStartCommand() - Intent recebido (tentativa #" + (isRunning ? "subsequente" : "primeira") + ")");
+        Log.d("OverlayService", "🔍 onStartCommand chamado - startId: " + startId + ", flags: " + flags);
         
         if (intent == null) {
             Log.w("OverlayService", "⚠️ Intent nulo, retornando START_NOT_STICKY");
