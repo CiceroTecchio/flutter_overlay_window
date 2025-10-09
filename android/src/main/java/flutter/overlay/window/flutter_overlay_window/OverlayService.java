@@ -190,6 +190,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
             windowManager = null;
         }
 
+        // Clean up animation timers to prevent SIGSEGV
+        try {
+            if (mTrayAnimationTimer != null) {
+                mTrayAnimationTimer.cancel();
+                mTrayAnimationTimer = null;
+            }
+            if (mTrayTimerTask != null) {
+                mTrayTimerTask.cancel();
+                mTrayTimerTask = null;
+            }
+            Log.d("OverlayService", "🛑 Animation timers cleaned up");
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error cleaning up animation timers: " + e.getMessage(), e);
+        }
+        
         // Otimização: Limpeza completa de recursos
         Log.d("OverlayService", "🧹 Limpando recursos e caches");
         isRunning = false;
@@ -897,8 +912,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     @Override
     public boolean onTouch(View view, MotionEvent event) {
-        if (windowManager != null && WindowSetup.enableDrag && flutterView != null) {
+        // Add comprehensive null checks to prevent SIGSEGV
+        if (windowManager == null || flutterView == null || !WindowSetup.enableDrag) {
+            Log.w("OverlayService", "⚠️ onTouch: Missing required components - windowManager: " + (windowManager != null) + ", flutterView: " + (flutterView != null) + ", enableDrag: " + WindowSetup.enableDrag);
+            return false;
+        }
+        
+        try {
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+            if (params == null) {
+                Log.e("OverlayService", "❌ onTouch: LayoutParams is null");
+                return false;
+            }
+            
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     dragging = false;
@@ -923,8 +949,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     int yy = params.y + ((int) dy * (invertY ? -1 : 1));
                     params.x = xx;
                     params.y = yy;
-                    if (windowManager != null) {
-                        windowManager.updateViewLayout(flutterView, params);
+                    
+                    // Add null check before WindowManager operation
+                    if (windowManager != null && flutterView != null) {
+                        try {
+                            windowManager.updateViewLayout(flutterView, params);
+                        } catch (Exception e) {
+                            Log.e("OverlayService", "❌ Error updating view layout: " + e.getMessage(), e);
+                        }
                     }
                     dragging = true;
                     break;
@@ -932,88 +964,165 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 case MotionEvent.ACTION_CANCEL:
                     lastYPosition = params.y;
                     if (!WindowSetup.positionGravity.equals("none")) {
-                        if (windowManager == null)
+                        if (windowManager == null || flutterView == null) {
+                            Log.w("OverlayService", "⚠️ onTouch: Cannot start animation - missing components");
                             return false;
-                        windowManager.updateViewLayout(flutterView, params);
-                        mTrayTimerTask = new TrayAnimationTimerTask();
-                        mTrayAnimationTimer = new Timer();
-                        mTrayAnimationTimer.schedule(mTrayTimerTask, 0, 25);
+                        }
+                        
+                        try {
+                            windowManager.updateViewLayout(flutterView, params);
+                        } catch (Exception e) {
+                            Log.e("OverlayService", "❌ Error updating view layout in animation: " + e.getMessage(), e);
+                        }
+                        
+                        // Safely create animation timer
+                        try {
+                            // Cancel existing timer to prevent memory leaks
+                            if (mTrayAnimationTimer != null) {
+                                mTrayAnimationTimer.cancel();
+                                mTrayAnimationTimer = null;
+                            }
+                            if (mTrayTimerTask != null) {
+                                mTrayTimerTask.cancel();
+                                mTrayTimerTask = null;
+                            }
+                            
+                            mTrayTimerTask = new TrayAnimationTimerTask();
+                            mTrayAnimationTimer = new Timer();
+                            mTrayAnimationTimer.schedule(mTrayTimerTask, 0, 25);
+                        } catch (Exception e) {
+                            Log.e("OverlayService", "❌ Error creating animation timer: " + e.getMessage(), e);
+                        }
                     }
                     return false;
                 default:
                     return false;
             }
             return false;
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Critical error in onTouch: " + e.getMessage(), e);
+            return false;
         }
-        return false;
     }
 
     private class TrayAnimationTimerTask extends TimerTask {
         int mDestX;
         int mDestY;
         WindowManager.LayoutParams params;
+        private volatile boolean isCancelled = false;
 
         public TrayAnimationTimerTask() {
             super();
-            if (flutterView != null) {
+            try {
+                if (flutterView == null || windowManager == null) {
+                    Log.w("OverlayService", "⚠️ TrayAnimationTimerTask: Missing components");
+                    isCancelled = true;
+                    return;
+                }
+                
                 params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-            } else {
-                return; // Exit early if flutterView is null
-            }
-            mDestY = lastYPosition;
-            switch (WindowSetup.positionGravity) {
-                case "auto":
-                    mDestX = (params.x + (flutterView.getWidth() / 2)) <= szWindow.x / 2 ? 0
-                            : szWindow.x - flutterView.getWidth();
+                if (params == null) {
+                    Log.e("OverlayService", "❌ TrayAnimationTimerTask: LayoutParams is null");
+                    isCancelled = true;
                     return;
-                case "left":
-                    mDestX = 0;
-                    return;
-                case "right":
-                    mDestX = szWindow.x - flutterView.getWidth();
-                    return;
-                default:
-                    mDestX = params.x;
-                    mDestY = params.y;
-                    break;
+                }
+                
+                mDestY = lastYPosition;
+                switch (WindowSetup.positionGravity) {
+                    case "auto":
+                        mDestX = (params.x + (flutterView.getWidth() / 2)) <= szWindow.x / 2 ? 0
+                                : szWindow.x - flutterView.getWidth();
+                        break;
+                    case "left":
+                        mDestX = 0;
+                        break;
+                    case "right":
+                        mDestX = szWindow.x - flutterView.getWidth();
+                        break;
+                    default:
+                        mDestX = params.x;
+                        mDestY = params.y;
+                        break;
+                }
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Error in TrayAnimationTimerTask constructor: " + e.getMessage(), e);
+                isCancelled = true;
             }
         }
 
         @Override
         public void run() {
-            mAnimationHandler.post(() -> {
-                if (params == null || flutterView == null) {
-                    return; // Exit early if params or flutterView is null
-                }
-                params.x = (2 * (params.x - mDestX)) / 3 + mDestX;
-                params.y = (2 * (params.y - mDestY)) / 3 + mDestY;
-                if (windowManager != null) {
-                    windowManager.updateViewLayout(flutterView, params);
-                }
-                if (Math.abs(params.x - mDestX) < 2 && Math.abs(params.y - mDestY) < 2) {
-                    TrayAnimationTimerTask.this.cancel();
-                    if (mTrayAnimationTimer != null) {
-                        mTrayAnimationTimer.cancel();
+            if (isCancelled) {
+                return;
+            }
+            
+            try {
+                mAnimationHandler.post(() -> {
+                    try {
+                        // Comprehensive null checks to prevent SIGSEGV
+                        if (isCancelled || params == null || flutterView == null || windowManager == null) {
+                            Log.d("OverlayService", "🛑 Animation cancelled or missing components");
+                            return;
+                        }
+                        
+                        // Check if the view is still attached
+                        if (flutterView.getParent() == null) {
+                            Log.w("OverlayService", "⚠️ FlutterView is not attached, cancelling animation");
+                            cancel();
+                            return;
+                        }
+                        
+                        params.x = (2 * (params.x - mDestX)) / 3 + mDestX;
+                        params.y = (2 * (params.y - mDestY)) / 3 + mDestY;
+                        
+                        windowManager.updateViewLayout(flutterView, params);
+                        
+                        if (Math.abs(params.x - mDestX) < 2 && Math.abs(params.y - mDestY) < 2) {
+                            TrayAnimationTimerTask.this.cancel();
+                            if (mTrayAnimationTimer != null) {
+                                mTrayAnimationTimer.cancel();
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e("OverlayService", "❌ Error in animation handler: " + e.getMessage(), e);
+                        cancel();
                     }
-                }
-            });
+                });
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Error posting animation to handler: " + e.getMessage(), e);
+                cancel();
+            }
+        }
+        
+        @Override
+        public boolean cancel() {
+            isCancelled = true;
+            return super.cancel();
         }
     }
     private void bringOverlayToFront() {
-        if (flutterView != null && flutterView.getParent() != null) {
-            try {
-                windowManager.removeView(flutterView);
-
-                WindowManager.LayoutParams layoutParams = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-
-                windowManager.addView(flutterView, layoutParams);
-
-                Log.d("OverlayService", "Overlay trazido para frente com sucesso.");
-            } catch (Exception e) {
-                Log.e("OverlayService", "Erro ao trazer overlay para frente: " + e.getMessage());
+        if (flutterView == null || windowManager == null) {
+            Log.w("OverlayService", "⚠️ bringOverlayToFront: Missing components");
+            return;
+        }
+        
+        if (flutterView.getParent() == null) {
+            Log.w("OverlayService", "⚠️ FlutterView is not attached to WindowManager");
+            return;
+        }
+        
+        try {
+            WindowManager.LayoutParams layoutParams = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+            if (layoutParams == null) {
+                Log.e("OverlayService", "❌ LayoutParams is null in bringOverlayToFront");
+                return;
             }
-        } else {
-            Log.w("OverlayService", "FlutterView não está anexado ao WindowManager.");
+            
+            windowManager.removeView(flutterView);
+            windowManager.addView(flutterView, layoutParams);
+            Log.d("OverlayService", "✅ Overlay brought to front successfully");
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error bringing overlay to front: " + e.getMessage(), e);
         }
     }
 
