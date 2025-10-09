@@ -191,6 +191,16 @@ public class FlutterOverlayWindowPlugin implements
                 }
             } else {
                 Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 6B: Usando OverlayService normal");
+                
+                // Check foreground service permissions for Android 12+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (!hasForegroundServicePermission()) {
+                        Log.w("FlutterOverlayWindowPlugin", "⚠️ Missing FOREGROUND_SERVICE_SPECIAL_USE permission");
+                        result.error("PERMISSION_ERROR", "FOREGROUND_SERVICE_SPECIAL_USE permission is required for Android 12+", null);
+                        return;
+                    }
+                }
+                
                 try {
                     Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 7: Iniciando OverlayService normal");
                     Log.d("FlutterOverlayWindowPlugin", "🚀 Iniciando OverlayService normal");
@@ -211,7 +221,16 @@ public class FlutterOverlayWindowPlugin implements
                     
                     Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 10: Chamando context.startService()");
                     Log.d("FlutterOverlayWindowPlugin", "🚀 Chamando context.startService()...");
-                    context.startService(intent);
+                    
+                    // Use startForegroundService() for Android 8+ to ensure proper foreground service handling
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        Log.d("FlutterOverlayWindowPlugin", "🚀 Using startForegroundService() for Android 8+");
+                        context.startForegroundService(intent);
+                    } else {
+                        Log.d("FlutterOverlayWindowPlugin", "🚀 Using startService() for older Android versions");
+                        context.startService(intent);
+                    }
+                    
                     Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 11: startService() executado com sucesso");
                     Log.d("FlutterOverlayWindowPlugin", "✅ OverlayService.startService() chamado com sucesso");
                     
@@ -412,6 +431,19 @@ public class FlutterOverlayWindowPlugin implements
             e.printStackTrace();
             return false;
         }
+    }
+
+    /**
+     * Check if the app has the necessary permissions to start foreground service
+     */
+    private boolean hasForegroundServicePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // For Android 12+, check if we have the special use permission
+            return context.checkSelfPermission(
+                "android.permission.FOREGROUND_SERVICE_SPECIAL_USE") == 
+                android.content.pm.PackageManager.PERMISSION_GRANTED;
+        }
+        return true; // For older versions, assume permission is granted
     }
 
    @Override

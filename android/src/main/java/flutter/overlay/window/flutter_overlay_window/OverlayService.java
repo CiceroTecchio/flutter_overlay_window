@@ -664,6 +664,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
+    /**
+     * Check if the app has the necessary permissions to start foreground service
+     */
+    private boolean hasForegroundServicePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // For Android 12+, check if we have the special use permission
+            return getApplicationContext().checkSelfPermission(
+                "android.permission.FOREGROUND_SERVICE_SPECIAL_USE") == 
+                android.content.pm.PackageManager.PERMISSION_GRANTED;
+        }
+        return true; // For older versions, assume permission is granted
+    }
+
     @Override
     public void onCreate() { // Get the cached FlutterEngine
         Log.d("OverlayService", "🚀 onCreate() - Iniciando OverlayService");
@@ -750,17 +763,52 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 .build();
         notification.flags |= Notification.FLAG_NO_CLEAR;
 
-        if (Build.VERSION.SDK_INT >= 34) {
-            int foregroundType = 0;
-            try {
-                foregroundType = (int) ServiceInfo.class
-                        .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
-            } catch (Exception e) {
-                e.printStackTrace();
+        // Handle foreground service start with proper error handling for Android 12+
+        // CRITICAL: startForeground() MUST be called within 5 seconds when service is started with startForegroundService()
+        try {
+            boolean hasPermission = hasForegroundServicePermission();
+            Log.d("OverlayService", "🔐 Foreground service permission check: " + hasPermission);
+            
+            if (Build.VERSION.SDK_INT >= 34) {
+                int foregroundType = 0;
+                try {
+                    foregroundType = (int) ServiceInfo.class
+                            .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Failed to get FOREGROUND_SERVICE_TYPE_SPECIAL_USE", e);
+                }
+                startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // For Android 12+ (API 31+), use special use foreground service type
+                int foregroundType = 0;
+                try {
+                    foregroundType = (int) ServiceInfo.class
+                            .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
+                } catch (Exception e) {
+                    Log.e("OverlayService", "Failed to get FOREGROUND_SERVICE_TYPE_SPECIAL_USE", e);
+                }
+                startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
+            } else {
+                startForeground(OverlayConstants.NOTIFICATION_ID, notification);
             }
-            startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
-        } else {
-            startForeground(OverlayConstants.NOTIFICATION_ID, notification);
+            
+            if (!hasPermission) {
+                Log.w("OverlayService", "⚠️ Started foreground service without proper permission - may be unstable");
+            } else {
+                Log.d("OverlayService", "✅ Foreground service started successfully with proper permissions");
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Failed to start foreground service: " + e.getMessage(), e);
+            // CRITICAL: Even if there's an error, we must call startForeground() to avoid timeout
+            try {
+                Log.w("OverlayService", "🔄 Attempting fallback startForeground() call");
+                startForeground(OverlayConstants.NOTIFICATION_ID, notification);
+                Log.d("OverlayService", "✅ Fallback startForeground() succeeded");
+            } catch (Exception fallbackException) {
+                Log.e("OverlayService", "❌ Fallback startForeground() also failed: " + fallbackException.getMessage(), fallbackException);
+                // If even the fallback fails, the service will be killed by the system
+                Log.e("OverlayService", "💀 Service will be terminated due to startForeground() failure");
+            }
         }
 
         instance = this;
