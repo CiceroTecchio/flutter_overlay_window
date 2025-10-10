@@ -70,7 +70,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     private static OverlayService instance;
     public static boolean isRunning = false;
-    private volatile boolean isDestroyed = false; // ✅ Flag para controlar estado de destruição
     private WindowManager windowManager = null;
     private FlutterView flutterView;
     private MethodChannel flutterChannel;
@@ -102,9 +101,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                // ✅ Verificar se o service ainda está ativo
-                if (isDestroyed || !isRunning) {
-                    Log.w("OverlayService", "⚠️ Service destruído ou não está rodando, ignorando screenReceiver");
+                // ✅ Verificar se o service ainda está rodando
+                if (!isRunning) {
+                    Log.w("OverlayService", "⚠️ Service não está rodando, ignorando screenReceiver");
                     return;
                 }
                 
@@ -139,9 +138,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if (Intent.ACTION_USER_PRESENT.equals(intent.getAction())) {
-                    // ✅ Verificar se o service ainda está ativo
-                    if (isDestroyed || !isRunning) {
-                        Log.w("OverlayService", "⚠️ Service destruído ou não está rodando, ignorando screenUnlockReceiver");
+                    // ✅ Verificar se o service ainda está rodando
+                    if (!isRunning) {
+                        Log.w("OverlayService", "⚠️ Service não está rodando, ignorando screenUnlockReceiver");
                         return;
                     }
                     
@@ -208,8 +207,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public void onDestroy() {
         Log.i("OverlayService", "🗑️ onDestroy() - Iniciando destruição do OverlayService");
         
-        // ✅ Marcar como destruído para evitar operações posteriores
-        isDestroyed = true;
 
         // ✅ Verificações de segurança para evitar crash nativo
         try {
@@ -470,11 +467,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
             return;
         }
         
-        // ✅ Verificar se o service foi destruído
-        if (isDestroyed) {
-            Log.w("OverlayService", "⚠️ Service destruído, cancelando onStartCommand");
-            return;
-        }
         
         // ✅ Verificar se o DartExecutor ainda está executando
         if (!engine.getDartExecutor().isExecutingDart()) {
@@ -485,19 +477,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
         Log.d("OverlayService", "♻️ Reutilizando FlutterEngine do onCreate()");
         if (flutterChannel == null && engine != null && engine.getDartExecutor() != null) {
             try {
-                // ✅ Verificar se o service ainda está ativo antes de criar channel
-                if (isDestroyed) {
-                    Log.w("OverlayService", "⚠️ Service destruído, cancelando criação do MethodChannel");
-                    return;
-                }
                 
                 flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
                 flutterChannel.setMethodCallHandler((call, result) -> {
                     try {
-                        // ✅ Verificar se o service ainda está ativo antes de processar chamada
-                        if (isDestroyed || !isRunning) {
-                            Log.w("OverlayService", "⚠️ Service destruído ou não está rodando, ignorando chamada: " + call.method);
-                            result.error("SERVICE_DESTROYED", "Service is destroyed", null);
+                        // ✅ Verificar se o service ainda está rodando
+                        if (!isRunning) {
+                            Log.w("OverlayService", "⚠️ Service não está rodando, ignorando chamada: " + call.method);
+                            result.error("SERVICE_NOT_RUNNING", "Service is not running", null);
                             return;
                         }
                         
@@ -532,19 +519,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         if (overlayMessageChannel == null && engine != null && engine.getDartExecutor() != null) {
             try {
-                // ✅ Verificar se o service ainda está ativo antes de criar channel
-                if (isDestroyed) {
-                    Log.w("OverlayService", "⚠️ Service destruído, cancelando criação do BasicMessageChannel");
-                    return;
-                }
                 
                 overlayMessageChannel = new BasicMessageChannel<>(engine.getDartExecutor(),
                         OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
                 overlayMessageChannel.setMessageHandler((message, reply) -> {
                     try {
-                        // ✅ Verificar se o service ainda está ativo antes de processar mensagem
-                        if (isDestroyed || !isRunning) {
-                            Log.w("OverlayService", "⚠️ Service destruído ou não está rodando, ignorando mensagem");
+                        // ✅ Verificar se o service ainda está rodando
+                        if (!isRunning) {
+                            Log.w("OverlayService", "⚠️ Service não está rodando, ignorando mensagem");
                             reply.reply(null);
                             return;
                         }
@@ -930,8 +912,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
         Log.d("OverlayService", "🚀 onCreate() - Iniciando OverlayService");
         Log.d("OverlayService", "🔍 onCreate() chamado - Engine count atual: " + (engine != null ? "Engine já existe" : "Engine nula"));
         
-        // ✅ Reset destroyed flag
-        isDestroyed = false;
         
         // Initialize resources early to prevent null pointer exceptions
         mResources = getApplicationContext().getResources();
@@ -948,11 +928,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
             return;
         }
         
-        // ✅ Verificar se o service foi destruído
-        if (isDestroyed) {
-            Log.w("OverlayService", "⚠️ Service já foi destruído, cancelando onCreate");
-            return;
-        }
         
         // ✅ Verificar se já existe uma instância do service
         if (instance != null && instance != this) {
@@ -971,11 +946,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.i("OverlayService", "🆕 CRIANDO NOVA FLUTTER ENGINE - Cache global vazio ou DartExecutor nulo");
             long startTime = System.currentTimeMillis();
             
-            // ✅ Verificar se o service ainda está ativo antes de criar engine
-            if (isDestroyed) {
-                Log.w("OverlayService", "⚠️ Service destruído durante criação da engine");
-                return;
-            }
             
             try {
                 FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
@@ -1017,11 +987,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // ✅ Create the MethodChannel with the properly initialized FlutterEngine
         if (flutterEngine != null && flutterEngine.getDartExecutor() != null) {
             try {
-                // ✅ Verificar se o service ainda está ativo antes de criar channels
-                if (isDestroyed) {
-                    Log.w("OverlayService", "⚠️ Service destruído, cancelando criação de channels no onCreate");
-                    return;
-                }
                 
                 flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
                 overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(),
@@ -1029,10 +994,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 
                 flutterChannel.setMethodCallHandler((call, result) -> {
                     try {
-                        // ✅ Verificar se o service ainda está ativo antes de processar chamada
-                        if (isDestroyed || !isRunning) {
-                            Log.w("OverlayService", "⚠️ Service destruído ou não está rodando, ignorando chamada: " + call.method);
-                            result.error("SERVICE_DESTROYED", "Service is destroyed", null);
+                        // ✅ Verificar se o service ainda está rodando
+                        if (!isRunning) {
+                            Log.w("OverlayService", "⚠️ Service não está rodando, ignorando chamada: " + call.method);
+                            result.error("SERVICE_NOT_RUNNING", "Service is not running", null);
                             return;
                         }
                         
@@ -1081,10 +1046,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 .setContentIntent(pendingIntent)
                 .setVisibility(WindowSetup.notificationVisibility)
                 .setOngoing(true)
+                .setAutoCancel(false) // ✅ Não permite fechar ao tocar
                 .setSound(null)
                 .setVibrate(new long[]{0L})
+                .setPriority(NotificationCompat.PRIORITY_LOW) // ✅ Prioridade baixa para não ser intrusiva
+                .setCategory(NotificationCompat.CATEGORY_SERVICE) // ✅ Categoria de serviço
                 .build();
-        notification.flags |= Notification.FLAG_NO_CLEAR;
+        
+        // ✅ Flags para tornar a notificação persistente e não fechável
+        notification.flags |= Notification.FLAG_NO_CLEAR; // Não pode ser limpa pelo usuário
+        notification.flags |= Notification.FLAG_ONGOING_EVENT; // Evento em andamento
+        notification.flags |= Notification.FLAG_FOREGROUND_SERVICE; // Serviço em primeiro plano
 
         // Handle foreground service start with proper error handling for Android 12+
         // CRITICAL: startForeground() MUST be called within 5 seconds when service is started with startForegroundService()
