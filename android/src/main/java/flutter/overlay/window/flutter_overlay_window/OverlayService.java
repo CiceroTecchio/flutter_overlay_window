@@ -633,25 +633,32 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     private void updateOverlayFlag(MethodChannel.Result result, String flag) {
-        if (windowManager != null) {
-            WindowSetup.setFlag(flag);
-            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-            params.flags = WindowSetup.flag
-                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                    | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                    | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED; // Removido FLAG_LAYOUT_INSET_DECOR
+        if (windowManager != null && flutterView != null) {
+            try {
+                WindowSetup.setFlag(flag);
+                WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+                params.flags = WindowSetup.flag
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED; // Removido FLAG_LAYOUT_INSET_DECOR
 
-            // Verificação de opacidade para Android 12+ (API 31)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
-                params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
-            } else {
-                params.alpha = 1;
-            }
+                // Verificação de opacidade para Android 12+ (API 31)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
+                    params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
+                } else {
+                    params.alpha = 1;
+                }
 
-            // Atualiza o layout da view
-            windowManager.updateViewLayout(flutterView, params);
-            if (result != null) {
-                result.success(true);
+                // Atualiza o layout da view
+                windowManager.updateViewLayout(flutterView, params);
+                if (result != null) {
+                    result.success(true);
+                }
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Error updating overlay flag: " + e.getMessage(), e);
+                if (result != null) {
+                    result.success(false);
+                }
             }
         } else {
             if (result != null) {
@@ -661,14 +668,21 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     private void resizeOverlay(int width, int height, boolean enableDrag, MethodChannel.Result result) {
-        if (windowManager != null) {
-            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
-            params.width = (width == -1999 || width == -1) ? -1 : dpToPx(width);
-            params.height = (height != 1999 || height != -1) ? dpToPx(height) : height;
-            WindowSetup.enableDrag = enableDrag;
-            windowManager.updateViewLayout(flutterView, params);
-            if (result != null) {
-                result.success(true);
+        if (windowManager != null && flutterView != null) {
+            try {
+                WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+                params.width = (width == -1999 || width == -1) ? -1 : dpToPx(width);
+                params.height = (height != 1999 || height != -1) ? dpToPx(height) : height;
+                WindowSetup.enableDrag = enableDrag;
+                windowManager.updateViewLayout(flutterView, params);
+                if (result != null) {
+                    result.success(true);
+                }
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Error resizing overlay: " + e.getMessage(), e);
+                if (result != null) {
+                    result.success(false);
+                }
             }
         } else {
             if (result != null) {
@@ -680,13 +694,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private static boolean moveOverlayInternal(int x, int y, @Nullable MethodChannel.Result result) {
         if (instance != null && instance.flutterView != null) {
             if (instance.windowManager != null) {
-                WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
-                params.x = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
-                params.y = instance.dpToPx(y);
-                instance.windowManager.updateViewLayout(instance.flutterView, params);
+                try {
+                    WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
+                    params.x = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
+                    params.y = instance.dpToPx(y);
+                    instance.windowManager.updateViewLayout(instance.flutterView, params);
 
-                if (result != null) result.success(true);
-                return true;
+                    if (result != null) result.success(true);
+                    return true;
+                } catch (Exception e) {
+                    Log.e("OverlayService", "❌ Error moving overlay: " + e.getMessage(), e);
+                    if (result != null) result.success(false);
+                    return false;
+                }
             }
         }
         if (result != null) result.success(false);
@@ -1170,7 +1190,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         params.x = (2 * (params.x - mDestX)) / 3 + mDestX;
                         params.y = (2 * (params.y - mDestY)) / 3 + mDestY;
                         
-                        windowManager.updateViewLayout(flutterView, params);
+                        try {
+                            windowManager.updateViewLayout(flutterView, params);
+                        } catch (Exception e) {
+                            Log.e("OverlayService", "❌ Error updating view layout in animation: " + e.getMessage(), e);
+                            cancel();
+                            return;
+                        }
                         
                         if (Math.abs(params.x - mDestX) < 2 && Math.abs(params.y - mDestY) < 2) {
                             TrayAnimationTimerTask.this.cancel();
