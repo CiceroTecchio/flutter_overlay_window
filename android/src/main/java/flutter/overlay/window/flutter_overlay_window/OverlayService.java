@@ -814,6 +814,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @Override
     public void onCreate() { // Get the cached FlutterEngine
         Log.d("OverlayService", "🚀 onCreate() - Iniciando OverlayService");
+        Log.d("OverlayService", "🔍 onCreate() chamado - Engine count atual: " + (engine != null ? "Engine já existe" : "Engine nula"));
         
         // Initialize resources early to prevent null pointer exceptions
         mResources = getApplicationContext().getResources();
@@ -823,6 +824,12 @@ public class OverlayService extends Service implements View.OnTouchListener {
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         registerReceiver(screenReceiver, filter);
         registerScreenUnlockReceiver();
+        
+        // ✅ Verificar se já temos uma engine na instância
+        if (this.engine != null && this.engine.getDartExecutor() != null) {
+            Log.i("OverlayService", "♻️ Engine já existe na instância - reutilizando");
+            return;
+        }
         
         // Usar apenas o cache global do Flutter (mais confiável)
         FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
