@@ -638,7 +638,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
             
             // ✅ Corrigir: Usar Gravity.TOP | Gravity.LEFT para posicionamento absoluto
-            params.gravity = Gravity.TOP | Gravity.LEFT;
+            params.gravity = Gravity.TOP | Gravity.RIGHT;
             
             Log.d("OverlayService", "🎯 LayoutParams - x: " + params.x + ", y: " + params.y + ", gravity: " + params.gravity);
 
