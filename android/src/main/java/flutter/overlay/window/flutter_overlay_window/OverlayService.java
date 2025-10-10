@@ -828,7 +828,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         
         // ✅ Debug: Log do engine count
-        Log.d("OverlayService", "🔍 Engine count antes: " + FlutterEngineCache.getInstance().getCachedEngines().size());
+        Log.d("OverlayService", "🔍 Verificando FlutterEngine no cache");
         
         if (flutterEngine == null || flutterEngine.getDartExecutor() == null) {
             Log.i("OverlayService", "🆕 CRIANDO NOVA FLUTTER ENGINE - Cache global vazio ou DartExecutor nulo");
@@ -854,7 +854,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     this.engine = flutterEngine;
                     
                     // ✅ Debug: Log do engine count após criação
-                    Log.d("OverlayService", "🔍 Engine count após criação: " + FlutterEngineCache.getInstance().getCachedEngines().size());
+                    Log.d("OverlayService", "🔍 FlutterEngine criada e armazenada no cache");
                 } else {
                     Log.e("OverlayService", "❌ FlutterEngine criada mas DartExecutor é nulo");
                     return;
@@ -868,7 +868,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             // ✅ Armazenar na variável de instância
             this.engine = flutterEngine;
             // ✅ Debug: Log do engine count ao reutilizar
-            Log.d("OverlayService", "🔍 Engine count ao reutilizar: " + FlutterEngineCache.getInstance().getCachedEngines().size());
+            Log.d("OverlayService", "🔍 Reutilizando FlutterEngine do cache");
         }
 
         // Create the MethodChannel with the properly initialized FlutterEngine
