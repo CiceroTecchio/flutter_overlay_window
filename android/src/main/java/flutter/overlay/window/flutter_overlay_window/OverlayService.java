@@ -1079,21 +1079,29 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
-    // ✅ Surface State Validation - Easy to implement!
+    // ✅ Surface State Validation - View-based (no internal surface APIs)
     private boolean isSurfaceValid() {
         try {
-            if (flutterView == null || flutterView.getSurfaceView() == null) {
+            if (flutterView == null) {
                 return false;
             }
-            
-            // ✅ Check accessibility state before surface validation
+
+            // If accessibility is active, use the more conservative check
             if (isAccessibilityActive()) {
                 Log.d("OverlayService", "🔍 Accessibility active, using safe surface check");
                 return isSurfaceValidWithAccessibility();
             }
-            
-            // Check if surface is valid and ready
-            return flutterView.getSurfaceView().getHolder().getSurface().isValid();
+
+            // View is attached to window (API < 19 lacks isAttachedToWindow)
+            boolean attached = Build.VERSION.SDK_INT < 19 || flutterView.isAttachedToWindow();
+            // Has a window token
+            boolean hasToken = flutterView.getWindowToken() != null;
+            // Has been laid out (non-zero size)
+            boolean laidOut = flutterView.getWidth() > 0 && flutterView.getHeight() > 0;
+            // Visible and shown
+            boolean visible = flutterView.getVisibility() == View.VISIBLE && flutterView.isShown();
+
+            return attached && hasToken && laidOut && visible;
         } catch (Exception e) {
             Log.w("OverlayService", "⚠️ Error checking surface validity: " + e.getMessage());
             return false;
@@ -1117,14 +1125,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
         try {
             // Wait a bit for accessibility operations to complete
             Thread.sleep(50);
-            
-            if (flutterView.getSurfaceView() == null) {
+
+            if (flutterView == null) {
                 return false;
             }
-            
-            // More robust check when accessibility is active
-            return flutterView.getSurfaceView().getHolder().getSurface().isValid() &&
-                   flutterView.getSurfaceView().getVisibility() == View.VISIBLE;
+
+            boolean attached = Build.VERSION.SDK_INT < 19 || flutterView.isAttachedToWindow();
+            boolean hasToken = flutterView.getWindowToken() != null;
+            boolean laidOut = flutterView.getWidth() > 0 && flutterView.getHeight() > 0;
+            boolean visible = flutterView.getVisibility() == View.VISIBLE && flutterView.isShown();
+
+            return attached && hasToken && laidOut && visible;
         } catch (Exception e) {
             Log.w("OverlayService", "⚠️ Error in accessibility surface check: " + e.getMessage());
             return false;
