@@ -100,9 +100,18 @@ public class OverlayService extends Service implements View.OnTouchListener {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-                if (flutterEngine == null) return;
-                flutterEngine.getLifecycleChannel().appIsResumed();
+                try {
+                    FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+                    if (flutterEngine == null || flutterEngine.getDartExecutor() == null) {
+                        Log.w("OverlayService", "⚠️ FlutterEngine or DartExecutor is null in screenReceiver");
+                        return;
+                    }
+                    if (flutterEngine.getLifecycleChannel() != null) {
+                        flutterEngine.getLifecycleChannel().appIsResumed();
+                    }
+                } catch (Exception e) {
+                    Log.e("OverlayService", "❌ Error in screenReceiver: " + e.getMessage(), e);
+                }
             }
         }
     };
@@ -124,13 +133,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             context.sendBroadcast(closeIntent);
 
                             FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-                            if (flutterView != null && flutterEngine != null) {
-                                flutterView.attachToFlutterEngine(flutterEngine);
-                                flutterEngine.getLifecycleChannel().appIsResumed();
-                                flutterView.invalidate();
-                                flutterView.requestLayout();
-                                bringOverlayToFront();
-                                Log.d("OverlayService", "FlutterView resumido e redraw feito.");
+                            if (flutterView != null && flutterEngine != null && flutterEngine.getDartExecutor() != null) {
+                                try {
+                                    flutterView.attachToFlutterEngine(flutterEngine);
+                                    if (flutterEngine.getLifecycleChannel() != null) {
+                                        flutterEngine.getLifecycleChannel().appIsResumed();
+                                    }
+                                    flutterView.invalidate();
+                                    flutterView.requestLayout();
+                                    bringOverlayToFront();
+                                    Log.d("OverlayService", "FlutterView resumido e redraw feito.");
+                                } catch (Exception e) {
+                                    Log.e("OverlayService", "❌ Error resuming FlutterView: " + e.getMessage(), e);
+                                }
                             } else {
                                 Log.w("OverlayService", "flutterView ou flutterEngine nulos ao tentar resumir.");
                             }
@@ -166,12 +181,12 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         try {
             FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-            if (engine != null) {
+            if (engine != null && engine.getDartExecutor() != null) {
                 Log.d("OverlayService", "📞 Chamando onOverlayClosed no Flutter");
                 new MethodChannel(engine.getDartExecutor(), "my_custom_overlay_channel")
                         .invokeMethod("onOverlayClosed", null);
             } else {
-                Log.w("OverlayService", "⚠️ FlutterEngine nulo, não foi possível chamar onOverlayClosed");
+                Log.w("OverlayService", "⚠️ FlutterEngine ou DartExecutor nulo, não foi possível chamar onOverlayClosed");
             }
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Falha ao chamar onOverlayClosed", e);
@@ -190,17 +205,22 @@ public class OverlayService extends Service implements View.OnTouchListener {
             windowManager = null;
         }
 
-        // Clean up animation timers to prevent SIGSEGV
+        // Clean up animation timers to prevent SIGSEGV and memory leaks
         try {
             if (mTrayAnimationTimer != null) {
                 mTrayAnimationTimer.cancel();
+                mTrayAnimationTimer.purge();
                 mTrayAnimationTimer = null;
             }
             if (mTrayTimerTask != null) {
                 mTrayTimerTask.cancel();
                 mTrayTimerTask = null;
             }
-            Log.d("OverlayService", "🛑 Animation timers cleaned up");
+            // Clear animation handler to prevent memory leaks
+            if (mAnimationHandler != null) {
+                mAnimationHandler.removeCallbacksAndMessages(null);
+            }
+            Log.d("OverlayService", "🛑 Animation timers and handlers cleaned up");
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Error cleaning up animation timers: " + e.getMessage(), e);
         }
@@ -222,6 +242,22 @@ public class OverlayService extends Service implements View.OnTouchListener {
         cachedLayoutParams = null;
         
         Log.d("OverlayService", "📊 Cache limpo - DP cache: " + dpCacheSize + " itens, PX cache: " + pxCacheSize + " itens");
+        
+        // Clean up FlutterEngine cache if this is the last overlay instance
+        try {
+            FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+            if (engine != null) {
+                // Only clean up if no other overlay is running
+                if (!LockScreenOverlayActivity.isRunning) {
+                    Log.d("OverlayService", "🧹 Limpando FlutterEngine cache - último overlay");
+                    FlutterEngineCache.getInstance().remove(OverlayConstants.CACHED_TAG);
+                } else {
+                    Log.d("OverlayService", "♻️ Mantendo FlutterEngine cache - LockScreenOverlay ainda ativo");
+                }
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error cleaning up FlutterEngine cache: " + e.getMessage(), e);
+        }
 
         try {
             NotificationManager notificationManager = (NotificationManager)
@@ -235,13 +271,23 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
 
         super.onDestroy();
-        if (isReceiverRegistered) {
-            Log.d("OverlayService", "📡 Desregistrando screenUnlockReceiver");
-            unregisterReceiver(screenUnlockReceiver);
-            isReceiverRegistered = false;
+        
+        // Clean up receivers to prevent memory leaks
+        try {
+            if (isReceiverRegistered && screenUnlockReceiver != null) {
+                Log.d("OverlayService", "📡 Desregistrando screenUnlockReceiver");
+                unregisterReceiver(screenUnlockReceiver);
+                screenUnlockReceiver = null;
+                isReceiverRegistered = false;
+            }
+            if (screenReceiver != null) {
+                Log.d("OverlayService", "📡 Desregistrando screenReceiver");
+                unregisterReceiver(screenReceiver);
+                screenReceiver = null;
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error unregistering receivers: " + e.getMessage(), e);
         }
-        Log.d("OverlayService", "📡 Desregistrando screenReceiver");
-        unregisterReceiver(screenReceiver);
         
         Log.i("OverlayService", "✅ OverlayService destruído com sucesso");
         
@@ -354,8 +400,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
         // Verificar FlutterEngine no onStartCommand (não apenas no onCreate)
         FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-        if (engine == null) {
-            Log.e("OverlayService", "❌ FlutterEngine não encontrado no cache");
+        if (engine == null || engine.getDartExecutor() == null) {
+            Log.e("OverlayService", "❌ FlutterEngine não encontrado no cache ou DartExecutor nulo");
             Log.d("OverlayService", "🔄 Tentando criar FlutterEngine no onStartCommand");
             
             try {
@@ -365,8 +411,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                         "overlayMain");
                 
                 engine = engineGroup.createAndRunEngine(this, entryPoint);
-                FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
-                Log.i("OverlayService", "✅ FlutterEngine criada no onStartCommand");
+                if (engine != null && engine.getDartExecutor() != null) {
+                    FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
+                    Log.i("OverlayService", "✅ FlutterEngine criada no onStartCommand");
+                } else {
+                    Log.e("OverlayService", "❌ FlutterEngine criada mas DartExecutor é nulo");
+                    return;
+                }
             } catch (Exception e) {
                 Log.e("OverlayService", "❌ Falha ao criar FlutterEngine: " + e.getMessage());
                 return;
@@ -374,36 +425,57 @@ public class OverlayService extends Service implements View.OnTouchListener {
         } else {
             Log.d("OverlayService", "✅ FlutterEngine encontrado no cache");
         }
-        if (flutterChannel == null) {
-            flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
-            flutterChannel.setMethodCallHandler((call, result) -> {
-                switch (call.method) {
-                    case "updateFlag":
-                        String flag = call.argument("flag");
-                        updateOverlayFlag(result, flag);
-                        break;
-                    case "updateOverlayPosition":
-                        int x = call.argument("x");
-                        int y = call.argument("y");
-                        moveOverlayInternal(x, y, result);
-                        break;
-                    case "resizeOverlay":
-                        int width = call.argument("width");
-                        int height = call.argument("height");
-                        boolean enableDrag = call.argument("enableDrag");
-                        resizeOverlay(width, height, enableDrag, result);
-                        break;
-                    default:
-                        result.notImplemented();
-                }
-            });
+        if (flutterChannel == null && engine != null && engine.getDartExecutor() != null) {
+            try {
+                flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
+                flutterChannel.setMethodCallHandler((call, result) -> {
+                    try {
+                        switch (call.method) {
+                            case "updateFlag":
+                                String flag = call.argument("flag");
+                                updateOverlayFlag(result, flag);
+                                break;
+                            case "updateOverlayPosition":
+                                int x = call.argument("x");
+                                int y = call.argument("y");
+                                moveOverlayInternal(x, y, result);
+                                break;
+                            case "resizeOverlay":
+                                int width = call.argument("width");
+                                int height = call.argument("height");
+                                boolean enableDrag = call.argument("enableDrag");
+                                resizeOverlay(width, height, enableDrag, result);
+                                break;
+                            default:
+                                result.notImplemented();
+                        }
+                    } catch (Exception e) {
+                        Log.e("OverlayService", "❌ Error in method call handler: " + e.getMessage(), e);
+                        result.error("METHOD_CALL_ERROR", "Error handling method call", e.getMessage());
+                    }
+                });
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Error creating MethodChannel: " + e.getMessage(), e);
+            }
         }
 
-        if (overlayMessageChannel == null) {
-            overlayMessageChannel = new BasicMessageChannel<>(engine.getDartExecutor(),
-                    OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+        if (overlayMessageChannel == null && engine != null && engine.getDartExecutor() != null) {
+            try {
+                overlayMessageChannel = new BasicMessageChannel<>(engine.getDartExecutor(),
+                        OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+                overlayMessageChannel.setMessageHandler((message, reply) -> {
+                    try {
+                        if (WindowSetup.messenger != null) {
+                            WindowSetup.messenger.send(message);
+                        }
+                    } catch (Exception e) {
+                        Log.e("OverlayService", "❌ Error in message handler: " + e.getMessage(), e);
+                    }
+                });
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Error creating BasicMessageChannel: " + e.getMessage(), e);
+            }
         }
-        overlayMessageChannel.setMessageHandler((message, reply) -> WindowSetup.messenger.send(message));
 
 
             if (flutterView != null) {
@@ -414,7 +486,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 }
             }
 
-            engine.getLifecycleChannel().appIsResumed();
+            if (engine.getLifecycleChannel() != null) {
+                engine.getLifecycleChannel().appIsResumed();
+            }
             
             Log.d("OverlayService", "🎬 Criando FlutterView");
             long startTime = System.currentTimeMillis();
@@ -708,54 +782,74 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // Usar apenas o cache global do Flutter (mais confiável)
         FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         
-        if (flutterEngine == null) {
-            Log.i("OverlayService", "🆕 CRIANDO NOVA FLUTTER ENGINE - Cache global vazio");
+        if (flutterEngine == null || flutterEngine.getDartExecutor() == null) {
+            Log.i("OverlayService", "🆕 CRIANDO NOVA FLUTTER ENGINE - Cache global vazio ou DartExecutor nulo");
             long startTime = System.currentTimeMillis();
             
-            FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
-            DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
-                    FlutterInjector.instance().flutterLoader().findAppBundlePath(),
-                    "overlayMain");
+            try {
+                FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
+                DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
+                        FlutterInjector.instance().flutterLoader().findAppBundlePath(),
+                        "overlayMain");
 
-            flutterEngine = engineGroup.createAndRunEngine(this, entryPoint);
-            
-            long creationTime = System.currentTimeMillis() - startTime;
-            Log.i("OverlayService", "✅ FlutterEngine criada em " + creationTime + "ms");
-            
-            // Armazenar no cache global
-            FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
-            Log.d("OverlayService", "💾 Engine armazenada no cache global");
+                flutterEngine = engineGroup.createAndRunEngine(this, entryPoint);
+                
+                if (flutterEngine != null && flutterEngine.getDartExecutor() != null) {
+                    long creationTime = System.currentTimeMillis() - startTime;
+                    Log.i("OverlayService", "✅ FlutterEngine criada em " + creationTime + "ms");
+                    
+                    // Armazenar no cache global
+                    FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
+                    Log.d("OverlayService", "💾 Engine armazenada no cache global");
+                } else {
+                    Log.e("OverlayService", "❌ FlutterEngine criada mas DartExecutor é nulo");
+                    return;
+                }
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Falha ao criar FlutterEngine no onCreate: " + e.getMessage(), e);
+                return;
+            }
         } else {
             Log.i("OverlayService", "♻️ REUTILIZANDO ENGINE do cache global");
         }
 
         // Create the MethodChannel with the properly initialized FlutterEngine
-        if (flutterEngine != null) {
-            flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
-            overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(),
-                    OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+        if (flutterEngine != null && flutterEngine.getDartExecutor() != null) {
+            try {
+                flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
+                overlayMessageChannel = new BasicMessageChannel(flutterEngine.getDartExecutor(),
+                        OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+                
+                flutterChannel.setMethodCallHandler((call, result) -> {
+                    try {
+                        switch (call.method) {
+                            case "updateFlag":
+                                String flag = call.argument("flag");
+                                updateOverlayFlag(result, flag);
+                                break;
+                            case "updateOverlayPosition":
+                                int x = call.argument("x");
+                                int y = call.argument("y");
+                                moveOverlayInternal(x, y, result);
+                                break;
+                            case "resizeOverlay":
+                                int width = call.argument("width");
+                                int height = call.argument("height");
+                                boolean enableDrag = call.argument("enableDrag");
+                                resizeOverlay(width, height, enableDrag, result);
+                                break;
+                            default:
+                                result.notImplemented();
+                        }
+                    } catch (Exception e) {
+                        Log.e("OverlayService", "❌ Error in onCreate method call handler: " + e.getMessage(), e);
+                        result.error("METHOD_CALL_ERROR", "Error handling method call", e.getMessage());
+                    }
+                });
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Error creating channels in onCreate: " + e.getMessage(), e);
+            }
         }
-         flutterChannel.setMethodCallHandler((call, result) -> {
-                switch (call.method) {
-                    case "updateFlag":
-                        String flag = call.argument("flag");
-                        updateOverlayFlag(result, flag);
-                        break;
-                    case "updateOverlayPosition":
-                        int x = call.argument("x");
-                        int y = call.argument("y");
-                        moveOverlayInternal(x, y, result);
-                        break;
-                    case "resizeOverlay":
-                        int width = call.argument("width");
-                        int height = call.argument("height");
-                        boolean enableDrag = call.argument("enableDrag");
-                        resizeOverlay(width, height, enableDrag, result);
-                        break;
-                    default:
-                        result.notImplemented();
-                }
-            });
 
         // 🔹 1. Criar canal e notificação rapidamente
         createNotificationChannel();
@@ -980,6 +1074,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             // Cancel existing timer to prevent memory leaks
                             if (mTrayAnimationTimer != null) {
                                 mTrayAnimationTimer.cancel();
+                                mTrayAnimationTimer.purge();
                                 mTrayAnimationTimer = null;
                             }
                             if (mTrayTimerTask != null) {
@@ -988,7 +1083,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             }
                             
                             mTrayTimerTask = new TrayAnimationTimerTask();
-                            mTrayAnimationTimer = new Timer();
+                            mTrayAnimationTimer = new Timer("OverlayAnimationTimer", true); // Use daemon thread
                             mTrayAnimationTimer.schedule(mTrayTimerTask, 0, 25);
                         } catch (Exception e) {
                             Log.e("OverlayService", "❌ Error creating animation timer: " + e.getMessage(), e);
@@ -1081,6 +1176,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             TrayAnimationTimerTask.this.cancel();
                             if (mTrayAnimationTimer != null) {
                                 mTrayAnimationTimer.cancel();
+                                mTrayAnimationTimer.purge();
+                                mTrayAnimationTimer = null;
                             }
                         }
                     } catch (Exception e) {

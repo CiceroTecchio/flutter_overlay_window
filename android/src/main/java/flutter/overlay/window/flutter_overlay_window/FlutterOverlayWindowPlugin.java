@@ -350,7 +350,8 @@ public class FlutterOverlayWindowPlugin implements
     public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
         mActivity = binding.getActivity();
         binding.addActivityResultListener(this);
-        if (FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG) == null) {
+        FlutterEngine cachedEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+        if (cachedEngine == null || cachedEngine.getDartExecutor() == null) {
             try {
                 Log.i("FlutterOverlayWindowPlugin", "🆕 CRIANDO FLUTTER ENGINE no Plugin");
                 long startTime = System.currentTimeMillis();
@@ -361,11 +362,15 @@ public class FlutterOverlayWindowPlugin implements
                         "overlayMain");
                 FlutterEngine engine = enn.createAndRunEngine(context, dEntry);
                 
-                long creationTime = System.currentTimeMillis() - startTime;
-                Log.i("FlutterOverlayWindowPlugin", "✅ FlutterEngine criada no Plugin em " + creationTime + "ms");
-                
-                FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
-                Log.d("FlutterOverlayWindowPlugin", "💾 Engine armazenada no cache global");
+                if (engine != null && engine.getDartExecutor() != null) {
+                    long creationTime = System.currentTimeMillis() - startTime;
+                    Log.i("FlutterOverlayWindowPlugin", "✅ FlutterEngine criada no Plugin em " + creationTime + "ms");
+                    
+                    FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
+                    Log.d("FlutterOverlayWindowPlugin", "💾 Engine armazenada no cache global");
+                } else {
+                    Log.e("FlutterOverlayWindowPlugin", "❌ FlutterEngine criada mas DartExecutor é nulo");
+                }
             } catch (Exception e) {
                 Log.e("FlutterOverlayWindowPlugin", "❌ Falha ao criar FlutterEngine no Plugin: " + e.getMessage());
                 e.printStackTrace();
@@ -413,11 +418,21 @@ public class FlutterOverlayWindowPlugin implements
 
     @Override
     public void onMessage(@Nullable Object message, @NonNull BasicMessageChannel.Reply reply) {
-        BasicMessageChannel overlayMessageChannel = new BasicMessageChannel<Object>(
-                FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG)
-                        .getDartExecutor(),
-                OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
-        overlayMessageChannel.send(message, reply);
+        try {
+            FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+            if (engine != null && engine.getDartExecutor() != null) {
+                BasicMessageChannel overlayMessageChannel = new BasicMessageChannel<Object>(
+                        engine.getDartExecutor(),
+                        OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+                overlayMessageChannel.send(message, reply);
+            } else {
+                Log.w("FlutterOverlayWindowPlugin", "⚠️ FlutterEngine ou DartExecutor nulo no onMessage");
+                reply.reply(null);
+            }
+        } catch (Exception e) {
+            Log.e("FlutterOverlayWindowPlugin", "❌ Error in onMessage: " + e.getMessage(), e);
+            reply.reply(null);
+        }
     }
 
     private boolean checkOverlayPermission() {

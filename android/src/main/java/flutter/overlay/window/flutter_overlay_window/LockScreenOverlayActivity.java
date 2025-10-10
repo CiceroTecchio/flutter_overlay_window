@@ -74,8 +74,8 @@ public class LockScreenOverlayActivity extends Activity {
 
         Log.d("LockScreenOverlay", "🔍 Buscando FlutterEngine no cache global");
         flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-        if (flutterEngine == null) {
-            Log.e("LockScreenOverlay", "❌ FlutterEngine não encontrado no cache global");
+        if (flutterEngine == null || flutterEngine.getDartExecutor() == null) {
+            Log.e("LockScreenOverlay", "❌ FlutterEngine não encontrado no cache global ou DartExecutor nulo");
             finish();
             isRunning = false;
             return;
@@ -161,11 +161,11 @@ public class LockScreenOverlayActivity extends Activity {
         
         try{
             FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-            if (engine != null) {
+            if (engine != null && engine.getDartExecutor() != null) {
                 Log.d("LockScreenOverlay", "📞 Chamando onOverlayClosed no Flutter");
                 new MethodChannel(engine.getDartExecutor(), "my_custom_overlay_channel").invokeMethod("onOverlayClosed", null);
             } else {
-                Log.w("LockScreenOverlay", "⚠️ FlutterEngine nulo, não foi possível chamar onOverlayClosed");
+                Log.w("LockScreenOverlay", "⚠️ FlutterEngine ou DartExecutor nulo, não foi possível chamar onOverlayClosed");
             }
         } catch (Exception e) {
             Log.e("LockScreenOverlay", "❌ Falha ao chamar onOverlayClosed", e);
