@@ -616,11 +616,12 @@ public class OverlayService extends Service implements View.OnTouchListener {
             int layoutWidth = (width == -1999 || width == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(width);
             int layoutHeight = (height == -1999 || height == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(height);
 
+            // ✅ Corrigir: Usar posições calculadas em vez de valores fixos
             WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                     layoutWidth,
                     layoutHeight,
-                    0,
-                    -statusBarHeightPx(),
+                    dx,  // ✅ Usar posição X calculada
+                    dy,  // ✅ Usar posição Y calculada
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                             ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                             : WindowManager.LayoutParams.TYPE_PHONE,
@@ -635,16 +636,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
                 params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
             }
-            params.gravity = WindowSetup.gravity;
+            
+            // ✅ Corrigir: Usar Gravity.TOP | Gravity.LEFT para posicionamento absoluto
+            params.gravity = Gravity.TOP | Gravity.LEFT;
+            
+            Log.d("OverlayService", "🎯 LayoutParams - x: " + params.x + ", y: " + params.y + ", gravity: " + params.gravity);
 
             Log.d("OverlayService", "📱 Adicionando FlutterView ao WindowManager");
             try {
                 windowManager.addView(flutterView, params);
                 Log.i("OverlayService", "✅ FlutterView adicionada ao WindowManager com sucesso");
-                
-                Log.d("OverlayService", "🎯 Movendo overlay para posição inicial");
-                moveOverlayInternal(dx, dy, null);
-                Log.i("OverlayService", "✅ Overlay posicionado com sucesso");
+                Log.i("OverlayService", "✅ Overlay posicionado com sucesso em (" + dx + ", " + dy + ")");
             } catch (Exception e) {
                 Log.e("OverlayService", "❌ Erro ao adicionar FlutterView ao WindowManager: " + e.getMessage());
                 e.printStackTrace();
