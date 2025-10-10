@@ -74,6 +74,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private FlutterView flutterView;
     private MethodChannel flutterChannel;
     private BasicMessageChannel<Object> overlayMessageChannel;
+    private FlutterEngine engine; // ✅ Armazenar engine como variável de instância
     private int clickableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
             | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
@@ -387,32 +388,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
         Log.d("onStartCommand", "Service started");
 
         // Verificar FlutterEngine no onStartCommand (não apenas no onCreate)
-        FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+        // ✅ Usar apenas a engine criada no onCreate()
+        FlutterEngine engine = this.engine;
         if (engine == null || engine.getDartExecutor() == null) {
-            Log.e("OverlayService", "❌ FlutterEngine não encontrado no cache ou DartExecutor nulo");
-            Log.d("OverlayService", "🔄 Tentando criar FlutterEngine no onStartCommand");
-            
-            try {
-                FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
-                DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
-                        FlutterInjector.instance().flutterLoader().findAppBundlePath(),
-                        "overlayMain");
-                
-                engine = engineGroup.createAndRunEngine(this, entryPoint);
-                if (engine != null && engine.getDartExecutor() != null) {
-                    FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
-                    Log.i("OverlayService", "✅ FlutterEngine criada no onStartCommand");
-                } else {
-                    Log.e("OverlayService", "❌ FlutterEngine criada mas DartExecutor é nulo");
-                    return;
-                }
-            } catch (Exception e) {
-                Log.e("OverlayService", "❌ Falha ao criar FlutterEngine: " + e.getMessage());
-                return;
-            }
-        } else {
-            Log.d("OverlayService", "✅ FlutterEngine encontrado no cache");
+            Log.e("OverlayService", "❌ FlutterEngine não disponível - onCreate() não foi chamado ou falhou");
+            return;
         }
+        Log.d("OverlayService", "♻️ Reutilizando FlutterEngine do onCreate()");
         if (flutterChannel == null && engine != null && engine.getDartExecutor() != null) {
             try {
                 flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
@@ -868,6 +850,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
                     Log.d("OverlayService", "💾 Engine armazenada no cache global");
                     
+                    // ✅ Armazenar na variável de instância
+                    this.engine = flutterEngine;
+                    
                     // ✅ Debug: Log do engine count após criação
                     Log.d("OverlayService", "🔍 Engine count após criação: " + FlutterEngineCache.getInstance().getCachedEngines().size());
                 } else {
@@ -880,6 +865,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
         } else {
             Log.i("OverlayService", "♻️ REUTILIZANDO ENGINE do cache global");
+            // ✅ Armazenar na variável de instância
+            this.engine = flutterEngine;
             // ✅ Debug: Log do engine count ao reutilizar
             Log.d("OverlayService", "🔍 Engine count ao reutilizar: " + FlutterEngineCache.getInstance().getCachedEngines().size());
         }

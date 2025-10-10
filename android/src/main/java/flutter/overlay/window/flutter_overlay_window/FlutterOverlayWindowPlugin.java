@@ -350,34 +350,10 @@ public class FlutterOverlayWindowPlugin implements
     public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
         mActivity = binding.getActivity();
         binding.addActivityResultListener(this);
-        FlutterEngine cachedEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-        if (cachedEngine == null || cachedEngine.getDartExecutor() == null) {
-            try {
-                Log.i("FlutterOverlayWindowPlugin", "🆕 CRIANDO FLUTTER ENGINE no Plugin");
-                long startTime = System.currentTimeMillis();
-                
-                FlutterEngineGroup enn = new FlutterEngineGroup(context);
-                DartExecutor.DartEntrypoint dEntry = new DartExecutor.DartEntrypoint(
-                        FlutterInjector.instance().flutterLoader().findAppBundlePath(),
-                        "overlayMain");
-                FlutterEngine engine = enn.createAndRunEngine(context, dEntry);
-                
-                if (engine != null && engine.getDartExecutor() != null) {
-                    long creationTime = System.currentTimeMillis() - startTime;
-                    Log.i("FlutterOverlayWindowPlugin", "✅ FlutterEngine criada no Plugin em " + creationTime + "ms");
-                    
-                    FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, engine);
-                    Log.d("FlutterOverlayWindowPlugin", "💾 Engine armazenada no cache global");
-                } else {
-                    Log.e("FlutterOverlayWindowPlugin", "❌ FlutterEngine criada mas DartExecutor é nulo");
-                }
-            } catch (Exception e) {
-                Log.e("FlutterOverlayWindowPlugin", "❌ Falha ao criar FlutterEngine no Plugin: " + e.getMessage());
-                e.printStackTrace();
-            }
-        } else {
-            Log.i("FlutterOverlayWindowPlugin", "♻️ REUTILIZANDO FLUTTER ENGINE do cache global");
-        }
+        
+        // ✅ NÃO criar engine aqui - deixar para o OverlayService
+        // O Plugin só deve gerenciar a UI, não criar engines
+        Log.d("FlutterOverlayWindowPlugin", "🔌 Plugin anexado à activity - engine será criada pelo OverlayService quando necessário");
     }
 
     public boolean isDeviceLockedOrScreenOff() {
