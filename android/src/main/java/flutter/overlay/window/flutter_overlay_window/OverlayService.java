@@ -274,6 +274,22 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.e("OverlayService", "❌ Error cleaning up animation timers: " + e.getMessage(), e);
         }
         
+        // ✅ Clean up notification monitoring
+        try {
+            if (notificationMonitorTimer != null) {
+                notificationMonitorTimer.cancel();
+                notificationMonitorTimer.purge();
+                notificationMonitorTimer = null;
+            }
+            if (notificationMonitorTask != null) {
+                notificationMonitorTask.cancel();
+                notificationMonitorTask = null;
+            }
+            Log.d("OverlayService", "🛑 Notification monitoring cleaned up");
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error cleaning up notification monitoring: " + e.getMessage(), e);
+        }
+        
         // ✅ Otimização: Limpeza completa de recursos
         Log.d("OverlayService", "🧹 Limpando recursos e caches");
         isRunning = false;
@@ -1039,24 +1055,34 @@ public class OverlayService extends Service implements View.OnTouchListener {
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingFlags);
 
         int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
-        Notification notification = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
+        
+        // ✅ Usar NotificationCompat.Builder com todas as configurações de persistência
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
                 .setContentTitle(WindowSetup.overlayTitle)
                 .setContentText(WindowSetup.overlayContent)
                 .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
                 .setContentIntent(pendingIntent)
                 .setVisibility(WindowSetup.notificationVisibility)
-                .setOngoing(true)
+                .setOngoing(true) // ✅ Evento em andamento
                 .setAutoCancel(false) // ✅ Não permite fechar ao tocar
                 .setSound(null)
                 .setVibrate(new long[]{0L})
                 .setPriority(NotificationCompat.PRIORITY_LOW) // ✅ Prioridade baixa para não ser intrusiva
                 .setCategory(NotificationCompat.CATEGORY_SERVICE) // ✅ Categoria de serviço
-                .build();
+                .setShowWhen(false) // ✅ Não mostrar timestamp
+                .setLocalOnly(true); // ✅ Apenas local, não sincronizar
         
-        // ✅ Flags para tornar a notificação persistente e não fechável
+        // ✅ Aplicar flags de persistência usando NotificationCompat
+        builder.setOngoing(true);
+        builder.setAutoCancel(false);
+        
+        Notification notification = builder.build();
+        
+        // ✅ Aplicar flags adicionais para máxima persistência
         notification.flags |= Notification.FLAG_NO_CLEAR; // Não pode ser limpa pelo usuário
         notification.flags |= Notification.FLAG_ONGOING_EVENT; // Evento em andamento
         notification.flags |= Notification.FLAG_FOREGROUND_SERVICE; // Serviço em primeiro plano
+        notification.flags |= Notification.FLAG_INSISTENT; // ✅ Insistente - não pode ser removida
 
         // Handle foreground service start with proper error handling for Android 12+
         // CRITICAL: startForeground() MUST be called within 5 seconds when service is started with startForegroundService()
@@ -1092,6 +1118,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
             } else {
                 Log.d("OverlayService", "✅ Foreground service started successfully with proper permissions");
             }
+            
+            // ✅ Iniciar monitoramento da notificação para recriar se removida
+            startNotificationMonitoring();
+            
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Failed to start foreground service: " + e.getMessage(), e);
             // CRITICAL: Even if there's an error, we must call startForeground() to avoid timeout
@@ -1099,6 +1129,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 Log.w("OverlayService", "🔄 Attempting fallback startForeground() call");
                 startForeground(OverlayConstants.NOTIFICATION_ID, notification);
                 Log.d("OverlayService", "✅ Fallback startForeground() succeeded");
+                
+                // ✅ Iniciar monitoramento mesmo no fallback
+                startNotificationMonitoring();
             } catch (Exception fallbackException) {
                 Log.e("OverlayService", "❌ Fallback startForeground() also failed: " + fallbackException.getMessage(), fallbackException);
                 // If even the fallback fails, the service will be killed by the system
@@ -1111,15 +1144,30 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // ✅ Configurar canal para ser persistente e não fechável
             NotificationChannel serviceChannel = new NotificationChannel(
                     OverlayConstants.CHANNEL_ID,
                     "Foreground Service Channel",
-                    NotificationManager.IMPORTANCE_LOW);
+                    NotificationManager.IMPORTANCE_LOW); // ✅ IMPORTANCE_LOW para não ser intrusiva
+            
+            // ✅ Configurações para tornar o canal persistente
             serviceChannel.setSound(null, null); 
             serviceChannel.enableVibration(false);
+            serviceChannel.setShowBadge(false); // ✅ Não mostrar badge
+            serviceChannel.setBypassDnd(false); // ✅ Não contornar "Não perturbe"
+            serviceChannel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE); // ✅ Visibilidade na tela de bloqueio
+            
+            // ✅ Para Android 8.0+ (API 26+), configurar para ser persistente
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                serviceChannel.setImportance(NotificationManager.IMPORTANCE_LOW);
+                serviceChannel.enableLights(false);
+                serviceChannel.enableVibration(false);
+            }
+            
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
                 manager.createNotificationChannel(serviceChannel);
+                Log.d("OverlayService", "✅ Canal de notificação criado com configurações persistentes");
             }
         }
     }
@@ -1127,6 +1175,119 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private int getDrawableResourceId(String resType, String name) {
         return getApplicationContext().getResources().getIdentifier(name, resType,
                 getApplicationContext().getPackageName());
+    }
+
+    // ✅ Monitoramento da notificação para recriar se removida
+    private Timer notificationMonitorTimer;
+    private TimerTask notificationMonitorTask;
+    
+    private void startNotificationMonitoring() {
+        try {
+            // Cancelar monitoramento anterior se existir
+            if (notificationMonitorTimer != null) {
+                notificationMonitorTimer.cancel();
+                notificationMonitorTimer = null;
+            }
+            if (notificationMonitorTask != null) {
+                notificationMonitorTask.cancel();
+                notificationMonitorTask = null;
+            }
+            
+            notificationMonitorTask = new TimerTask() {
+                @Override
+                public void run() {
+                    try {
+                        if (!isRunning) {
+                            return; // Service não está rodando, parar monitoramento
+                        }
+                        
+                        // Verificar se a notificação ainda existe
+                        NotificationManager notificationManager = (NotificationManager) 
+                            getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
+                        
+                        if (notificationManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            // Verificar se a notificação ainda está ativa
+                            boolean notificationExists = false;
+                            try {
+                                StatusBarNotification[] notifications = notificationManager.getActiveNotifications();
+                                for (StatusBarNotification notification : notifications) {
+                                    if (notification.getId() == OverlayConstants.NOTIFICATION_ID) {
+                                        notificationExists = true;
+                                        break;
+                                    }
+                                }
+                            } catch (Exception e) {
+                                Log.w("OverlayService", "⚠️ Error checking notification status: " + e.getMessage());
+                            }
+                            
+                            // Se a notificação foi removida, recriar
+                            if (!notificationExists) {
+                                Log.w("OverlayService", "⚠️ Notification was removed, recreating...");
+                                handler.post(() -> {
+                                    try {
+                                        recreateNotification();
+                                    } catch (Exception e) {
+                                        Log.e("OverlayService", "❌ Error recreating notification: " + e.getMessage());
+                                    }
+                                });
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e("OverlayService", "❌ Error in notification monitoring: " + e.getMessage());
+                    }
+                }
+            };
+            
+            notificationMonitorTimer = new Timer("NotificationMonitor", true);
+            notificationMonitorTimer.schedule(notificationMonitorTask, 5000, 2000); // Verificar a cada 2 segundos
+            Log.d("OverlayService", "✅ Notification monitoring started");
+            
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error starting notification monitoring: " + e.getMessage());
+        }
+    }
+    
+    private void recreateNotification() {
+        try {
+            Log.d("OverlayService", "🔄 Recreating notification...");
+            
+            // Recriar a notificação com as mesmas configurações
+            Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    ? PendingIntent.FLAG_IMMUTABLE
+                    : PendingIntent.FLAG_UPDATE_CURRENT;
+            PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingFlags);
+
+            int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
+            
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
+                    .setContentTitle(WindowSetup.overlayTitle)
+                    .setContentText(WindowSetup.overlayContent)
+                    .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
+                    .setContentIntent(pendingIntent)
+                    .setVisibility(WindowSetup.notificationVisibility)
+                    .setOngoing(true)
+                    .setAutoCancel(false)
+                    .setSound(null)
+                    .setVibrate(new long[]{0L})
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                    .setShowWhen(false)
+                    .setLocalOnly(true);
+            
+            Notification notification = builder.build();
+            notification.flags |= Notification.FLAG_NO_CLEAR;
+            notification.flags |= Notification.FLAG_ONGOING_EVENT;
+            notification.flags |= Notification.FLAG_FOREGROUND_SERVICE;
+            notification.flags |= Notification.FLAG_INSISTENT;
+            
+            // Recriar a notificação
+            startForeground(OverlayConstants.NOTIFICATION_ID, notification);
+            Log.d("OverlayService", "✅ Notification recreated successfully");
+            
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error recreating notification: " + e.getMessage());
+        }
     }
 
     // Otimização: Funções de conversão com cache para melhor performance
