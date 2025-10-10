@@ -831,6 +831,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
             return;
         }
         
+        // ✅ Verificar se já existe uma instância do service
+        if (instance != null && instance != this) {
+            Log.i("OverlayService", "♻️ Service já existe - reutilizando instância existente");
+            this.engine = instance.engine;
+            return;
+        }
+        
         // Usar apenas o cache global do Flutter (mais confiável)
         FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         
