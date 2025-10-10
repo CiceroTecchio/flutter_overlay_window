@@ -243,21 +243,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
         
         Log.d("OverlayService", "📊 Cache limpo - DP cache: " + dpCacheSize + " itens, PX cache: " + pxCacheSize + " itens");
         
-        // Clean up FlutterEngine cache if this is the last overlay instance
-        try {
-            FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
-            if (engine != null) {
-                // Only clean up if no other overlay is running
-                if (!LockScreenOverlayActivity.isRunning) {
-                    Log.d("OverlayService", "🧹 Limpando FlutterEngine cache - último overlay");
-                    FlutterEngineCache.getInstance().remove(OverlayConstants.CACHED_TAG);
-                } else {
-                    Log.d("OverlayService", "♻️ Mantendo FlutterEngine cache - LockScreenOverlay ainda ativo");
-                }
-            }
-        } catch (Exception e) {
-            Log.e("OverlayService", "❌ Error cleaning up FlutterEngine cache: " + e.getMessage(), e);
-        }
+        // ✅ NUNCA limpar o FlutterEngine cache - sempre reutilizar!
+        // O cache deve ser mantido para reutilização entre overlays
+        Log.d("OverlayService", "♻️ Mantendo FlutterEngine cache para reutilização");
 
         try {
             NotificationManager notificationManager = (NotificationManager)
@@ -857,6 +845,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // Usar apenas o cache global do Flutter (mais confiável)
         FlutterEngine flutterEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
         
+        // ✅ Debug: Log do engine count
+        Log.d("OverlayService", "🔍 Engine count antes: " + FlutterEngineCache.getInstance().getCachedEngines().size());
+        
         if (flutterEngine == null || flutterEngine.getDartExecutor() == null) {
             Log.i("OverlayService", "🆕 CRIANDO NOVA FLUTTER ENGINE - Cache global vazio ou DartExecutor nulo");
             long startTime = System.currentTimeMillis();
@@ -876,6 +867,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     // Armazenar no cache global
                     FlutterEngineCache.getInstance().put(OverlayConstants.CACHED_TAG, flutterEngine);
                     Log.d("OverlayService", "💾 Engine armazenada no cache global");
+                    
+                    // ✅ Debug: Log do engine count após criação
+                    Log.d("OverlayService", "🔍 Engine count após criação: " + FlutterEngineCache.getInstance().getCachedEngines().size());
                 } else {
                     Log.e("OverlayService", "❌ FlutterEngine criada mas DartExecutor é nulo");
                     return;
@@ -886,6 +880,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
         } else {
             Log.i("OverlayService", "♻️ REUTILIZANDO ENGINE do cache global");
+            // ✅ Debug: Log do engine count ao reutilizar
+            Log.d("OverlayService", "🔍 Engine count ao reutilizar: " + FlutterEngineCache.getInstance().getCachedEngines().size());
         }
 
         // Create the MethodChannel with the properly initialized FlutterEngine
