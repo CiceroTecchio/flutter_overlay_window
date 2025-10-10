@@ -402,8 +402,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
             int startX = intent.getIntExtra("startX", OverlayConstants.DEFAULT_XY);
             int startY = intent.getIntExtra("startY", OverlayConstants.DEFAULT_XY);
-            int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : startX;
-            int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : startY;
+            // ✅ Corrigir lógica de posicionamento - converter DP para pixels
+            int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : dpToPx(startX);
+            int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : dpToPx(startY);
             moveOverlayInternal(dx, dy, null);
             bringOverlayToFront();
             Log.d("OverlayService", "Overlay já ativo, trazido para frente.");
@@ -607,8 +608,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
             int width = intent.getIntExtra("width", WindowSetup.width);
             int height = intent.getIntExtra("height", screenHeight());
-            int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : startX;
-            int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : startY;
+            // ✅ Corrigir lógica de posicionamento - converter DP para pixels
+            int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : dpToPx(startX);
+            int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : dpToPx(startY);
+            
+            Log.d("OverlayService", "🎯 Posicionamento - startX: " + startX + " -> dx: " + dx + ", startY: " + startY + " -> dy: " + dy);
             int layoutWidth = (width == -1999 || width == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(width);
             int layoutHeight = (height == -1999 || height == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(height);
 
@@ -820,8 +824,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     }
                     
                     WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
-                    params.x = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
-                    params.y = instance.dpToPx(y);
+                    // ✅ Corrigir: x e y já estão em pixels, não converter novamente
+                    params.x = (x == -1999 || x == -1) ? -1 : x;
+                    params.y = y;
+                    
+                    Log.d("OverlayService", "🎯 moveOverlayInternal - x: " + x + ", y: " + y + " -> params.x: " + params.x + ", params.y: " + params.y);
                     
                     // ✅ Thread Synchronization with Accessibility Support
                     new Handler(Looper.getMainLooper()).post(() -> {
