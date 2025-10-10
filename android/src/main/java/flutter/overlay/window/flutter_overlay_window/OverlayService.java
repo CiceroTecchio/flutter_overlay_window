@@ -635,6 +635,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private void updateOverlayFlag(MethodChannel.Result result, String flag) {
         if (windowManager != null && flutterView != null) {
             try {
+                // ✅ Surface State Validation
+                if (!isSurfaceValid()) {
+                    Log.w("OverlayService", "⚠️ Surface not valid, skipping flag update");
+                    if (result != null) result.success(false);
+                    return;
+                }
+                
                 WindowSetup.setFlag(flag);
                 WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
                 params.flags = WindowSetup.flag
@@ -649,11 +656,22 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     params.alpha = 1;
                 }
 
-                // Atualiza o layout da view
-                windowManager.updateViewLayout(flutterView, params);
-                if (result != null) {
-                    result.success(true);
-                }
+                // ✅ Thread Synchronization with Accessibility Support
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    try {
+                        // ✅ Wait for accessibility operations to complete
+                        if (isAccessibilityActive()) {
+                            Thread.sleep(100); // Give accessibility time to complete
+                        }
+                        
+                        windowManager.updateViewLayout(flutterView, params);
+                        if (result != null) result.success(true);
+                    } catch (Exception e) {
+                        Log.e("OverlayService", "❌ Error updating overlay flag: " + e.getMessage(), e);
+                        if (result != null) result.success(false);
+                    }
+                });
+                
             } catch (Exception e) {
                 Log.e("OverlayService", "❌ Error updating overlay flag: " + e.getMessage(), e);
                 if (result != null) {
@@ -670,24 +688,40 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private void resizeOverlay(int width, int height, boolean enableDrag, MethodChannel.Result result) {
         if (windowManager != null && flutterView != null) {
             try {
+                // ✅ Surface State Validation
+                if (!isSurfaceValid()) {
+                    Log.w("OverlayService", "⚠️ Surface not valid, skipping resize");
+                    if (result != null) result.success(false);
+                    return;
+                }
+                
                 WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
                 params.width = (width == -1999 || width == -1) ? -1 : dpToPx(width);
                 params.height = (height != 1999 || height != -1) ? dpToPx(height) : height;
                 WindowSetup.enableDrag = enableDrag;
-                windowManager.updateViewLayout(flutterView, params);
-                if (result != null) {
-                    result.success(true);
-                }
+                
+                // ✅ Thread Synchronization with Accessibility Support
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    try {
+                        // ✅ Wait for accessibility operations to complete
+                        if (isAccessibilityActive()) {
+                            Thread.sleep(100); // Give accessibility time to complete
+                        }
+                        
+                        windowManager.updateViewLayout(flutterView, params);
+                        if (result != null) result.success(true);
+                    } catch (Exception e) {
+                        Log.e("OverlayService", "❌ Error resizing overlay: " + e.getMessage(), e);
+                        if (result != null) result.success(false);
+                    }
+                });
+                
             } catch (Exception e) {
                 Log.e("OverlayService", "❌ Error resizing overlay: " + e.getMessage(), e);
-                if (result != null) {
-                    result.success(false);
-                }
+                if (result != null) result.success(false);
             }
         } else {
-            if (result != null) {
-                result.success(false);
-            }
+            if (result != null) result.success(false);
         }
     }
 
@@ -695,12 +729,33 @@ public class OverlayService extends Service implements View.OnTouchListener {
         if (instance != null && instance.flutterView != null) {
             if (instance.windowManager != null) {
                 try {
+                    // ✅ Surface State Validation
+                    if (!instance.isSurfaceValid()) {
+                        Log.w("OverlayService", "⚠️ Surface not valid, skipping move");
+                        if (result != null) result.success(false);
+                        return false;
+                    }
+                    
                     WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
                     params.x = (x == -1999 || x == -1) ? -1 : instance.dpToPx(x);
                     params.y = instance.dpToPx(y);
-                    instance.windowManager.updateViewLayout(instance.flutterView, params);
-
-                    if (result != null) result.success(true);
+                    
+                    // ✅ Thread Synchronization with Accessibility Support
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        try {
+                            // ✅ Wait for accessibility operations to complete
+                            if (instance.isAccessibilityActive()) {
+                                Thread.sleep(100); // Give accessibility time to complete
+                            }
+                            
+                            instance.windowManager.updateViewLayout(instance.flutterView, params);
+                            if (result != null) result.success(true);
+                        } catch (Exception e) {
+                            Log.e("OverlayService", "❌ Error moving overlay: " + e.getMessage(), e);
+                            if (result != null) result.success(false);
+                        }
+                    });
+                    
                     return true;
                 } catch (Exception e) {
                     Log.e("OverlayService", "❌ Error moving overlay: " + e.getMessage(), e);
@@ -1021,6 +1076,58 @@ public class OverlayService extends Service implements View.OnTouchListener {
         } catch (Exception e) {
             Log.e("OverlayService", "Error checking orientation: " + e.getMessage());
             return true; // Default to portrait as fallback
+        }
+    }
+
+    // ✅ Surface State Validation - Easy to implement!
+    private boolean isSurfaceValid() {
+        try {
+            if (flutterView == null || flutterView.getSurfaceView() == null) {
+                return false;
+            }
+            
+            // ✅ Check accessibility state before surface validation
+            if (isAccessibilityActive()) {
+                Log.d("OverlayService", "🔍 Accessibility active, using safe surface check");
+                return isSurfaceValidWithAccessibility();
+            }
+            
+            // Check if surface is valid and ready
+            return flutterView.getSurfaceView().getHolder().getSurface().isValid();
+        } catch (Exception e) {
+            Log.w("OverlayService", "⚠️ Error checking surface validity: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // ✅ Accessibility Detection
+    private boolean isAccessibilityActive() {
+        try {
+            android.view.accessibility.AccessibilityManager am = 
+                (android.view.accessibility.AccessibilityManager) getSystemService(Context.ACCESSIBILITY_SERVICE);
+            return am != null && am.isEnabled();
+        } catch (Exception e) {
+            Log.w("OverlayService", "⚠️ Error checking accessibility: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // ✅ Safe Surface Validation with Accessibility
+    private boolean isSurfaceValidWithAccessibility() {
+        try {
+            // Wait a bit for accessibility operations to complete
+            Thread.sleep(50);
+            
+            if (flutterView.getSurfaceView() == null) {
+                return false;
+            }
+            
+            // More robust check when accessibility is active
+            return flutterView.getSurfaceView().getHolder().getSurface().isValid() &&
+                   flutterView.getSurfaceView().getVisibility() == View.VISIBLE;
+        } catch (Exception e) {
+            Log.w("OverlayService", "⚠️ Error in accessibility surface check: " + e.getMessage());
+            return false;
         }
     }
 
