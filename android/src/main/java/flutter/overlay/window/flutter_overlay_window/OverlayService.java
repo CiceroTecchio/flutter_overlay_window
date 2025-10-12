@@ -1133,8 +1133,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 Log.d("OverlayService", "✅ Foreground service started successfully with proper permissions");
             }
             
-            // ✅ Iniciar monitoramento da notificação para recriar se removida
-            startNotificationMonitoring();
+            // ✅ Temporarily disable notification monitoring to prevent crashes
+            // startNotificationMonitoring();
             
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Failed to start foreground service: " + e.getMessage(), e);
@@ -1144,8 +1144,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 startForeground(OverlayConstants.NOTIFICATION_ID, notification);
                 Log.d("OverlayService", "✅ Fallback startForeground() succeeded");
                 
-                // ✅ Iniciar monitoramento mesmo no fallback
-                startNotificationMonitoring();
+                // ✅ Temporarily disable notification monitoring to prevent crashes
+                // startNotificationMonitoring();
             } catch (Exception fallbackException) {
                 Log.e("OverlayService", "❌ Fallback startForeground() also failed: " + fallbackException.getMessage(), fallbackException);
                 // If even the fallback fails, the service will be killed by the system

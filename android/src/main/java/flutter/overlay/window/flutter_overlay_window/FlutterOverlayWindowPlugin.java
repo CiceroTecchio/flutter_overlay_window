@@ -465,20 +465,6 @@ public class FlutterOverlayWindowPlugin implements
             
             Log.d("FlutterOverlayWindowPlugin", "🔐 Permission check - Base: " + hasBasePermission + ", Special Use: " + hasSpecialUsePermission);
             
-            // Debug: List all permissions declared in manifest
-            try {
-                android.content.pm.PackageInfo packageInfo = context.getPackageManager().getPackageInfo(context.getPackageName(), android.content.pm.PackageManager.GET_PERMISSIONS);
-                if (packageInfo.requestedPermissions != null) {
-                    Log.d("FlutterOverlayWindowPlugin", "📋 All declared permissions:");
-                    for (String permission : packageInfo.requestedPermissions) {
-                        boolean granted = context.checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-                        Log.d("FlutterOverlayWindowPlugin", "  - " + permission + ": " + (granted ? "✅ GRANTED" : "❌ DENIED"));
-                    }
-                }
-            } catch (Exception e) {
-                Log.e("FlutterOverlayWindowPlugin", "Error listing permissions: " + e.getMessage());
-            }
-            
             // For Android 12+, we need both permissions
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (!hasSpecialUsePermission) {
