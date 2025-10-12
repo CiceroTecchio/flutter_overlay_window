@@ -926,9 +926,18 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private boolean hasForegroundServicePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // For Android 12+, check if we have the special use permission
-            return getApplicationContext().checkSelfPermission(
+            boolean hasSpecialUsePermission = getApplicationContext().checkSelfPermission(
                 "android.permission.FOREGROUND_SERVICE_SPECIAL_USE") == 
                 android.content.pm.PackageManager.PERMISSION_GRANTED;
+            
+            // Also check if we have the base foreground service permission
+            boolean hasBasePermission = getApplicationContext().checkSelfPermission(
+                "android.permission.FOREGROUND_SERVICE") == 
+                android.content.pm.PackageManager.PERMISSION_GRANTED;
+            
+            Log.d("OverlayService", "🔐 Permission check - Base: " + hasBasePermission + ", Special Use: " + hasSpecialUsePermission);
+            
+            return hasBasePermission && hasSpecialUsePermission;
         }
         return true; // For older versions, assume permission is granted
     }
@@ -1100,23 +1109,18 @@ public class OverlayService extends Service implements View.OnTouchListener {
             boolean hasPermission = hasForegroundServicePermission();
             Log.d("OverlayService", "🔐 Foreground service permission check: " + hasPermission);
             
-            if (Build.VERSION.SDK_INT >= 34) {
-                int foregroundType = 0;
-                try {
-                    foregroundType = (int) ServiceInfo.class
-                            .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
-                } catch (Exception e) {
-                    Log.e("OverlayService", "Failed to get FOREGROUND_SERVICE_TYPE_SPECIAL_USE", e);
-                }
-                startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 // For Android 12+ (API 31+), use special use foreground service type
                 int foregroundType = 0;
                 try {
-                    foregroundType = (int) ServiceInfo.class
-                            .getField("FOREGROUND_SERVICE_TYPE_SPECIAL_USE").get(null);
+                    // Use the correct constant for special use foreground service
+                    foregroundType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
+                    Log.d("OverlayService", "✅ Using FOREGROUND_SERVICE_TYPE_SPECIAL_USE: " + foregroundType);
                 } catch (Exception e) {
-                    Log.e("OverlayService", "Failed to get FOREGROUND_SERVICE_TYPE_SPECIAL_USE", e);
+                    Log.e("OverlayService", "❌ Failed to get FOREGROUND_SERVICE_TYPE_SPECIAL_USE", e);
+                    // Fallback to regular foreground service
+                    startForeground(OverlayConstants.NOTIFICATION_ID, notification);
+                    return;
                 }
                 startForeground(OverlayConstants.NOTIFICATION_ID, notification, foregroundType);
             } else {
@@ -1129,8 +1133,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 Log.d("OverlayService", "✅ Foreground service started successfully with proper permissions");
             }
             
-            // ✅ Iniciar monitoramento da notificação para recriar se removida
-            startNotificationMonitoring();
+            // ✅ Temporarily disable notification monitoring to prevent crashes
+            // startNotificationMonitoring();
             
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Failed to start foreground service: " + e.getMessage(), e);
@@ -1140,8 +1144,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 startForeground(OverlayConstants.NOTIFICATION_ID, notification);
                 Log.d("OverlayService", "✅ Fallback startForeground() succeeded");
                 
-                // ✅ Iniciar monitoramento mesmo no fallback
-                startNotificationMonitoring();
+                // ✅ Temporarily disable notification monitoring to prevent crashes
+                // startNotificationMonitoring();
             } catch (Exception fallbackException) {
                 Log.e("OverlayService", "❌ Fallback startForeground() also failed: " + fallbackException.getMessage(), fallbackException);
                 // If even the fallback fails, the service will be killed by the system
