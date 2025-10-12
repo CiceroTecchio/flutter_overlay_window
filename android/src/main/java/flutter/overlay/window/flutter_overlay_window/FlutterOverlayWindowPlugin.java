@@ -199,6 +199,18 @@ public class FlutterOverlayWindowPlugin implements
                         result.error("PERMISSION_ERROR", "FOREGROUND_SERVICE_SPECIAL_USE permission is required for Android 12+", null);
                         return;
                     }
+                    
+                    // Additional check for Android 12+ background restrictions
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        // Check if app is in foreground or has special permission
+                        boolean isAppInForeground = isAppInForeground();
+                        Log.d("FlutterOverlayWindowPlugin", "🔍 App in foreground: " + isAppInForeground);
+                        
+                        if (!isAppInForeground) {
+                            Log.w("FlutterOverlayWindowPlugin", "⚠️ App is in background, foreground service may be restricted");
+                            // Continue anyway, but log the warning
+                        }
+                    }
                 }
                 
                 try {
@@ -430,11 +442,42 @@ public class FlutterOverlayWindowPlugin implements
     private boolean hasForegroundServicePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // For Android 12+, check if we have the special use permission
-            return context.checkSelfPermission(
+            boolean hasSpecialUsePermission = context.checkSelfPermission(
                 "android.permission.FOREGROUND_SERVICE_SPECIAL_USE") == 
                 android.content.pm.PackageManager.PERMISSION_GRANTED;
+            
+            // Also check if we have the base foreground service permission
+            boolean hasBasePermission = context.checkSelfPermission(
+                "android.permission.FOREGROUND_SERVICE") == 
+                android.content.pm.PackageManager.PERMISSION_GRANTED;
+            
+            Log.d("FlutterOverlayWindowPlugin", "🔐 Permission check - Base: " + hasBasePermission + ", Special Use: " + hasSpecialUsePermission);
+            
+            return hasBasePermission && hasSpecialUsePermission;
         }
         return true; // For older versions, assume permission is granted
+    }
+
+    /**
+     * Check if the app is currently in the foreground
+     */
+    private boolean isAppInForeground() {
+        try {
+            android.app.ActivityManager activityManager = (android.app.ActivityManager) context.getSystemService(android.content.Context.ACTIVITY_SERVICE);
+            if (activityManager != null) {
+                java.util.List<android.app.ActivityManager.RunningAppProcessInfo> runningProcesses = activityManager.getRunningAppProcesses();
+                if (runningProcesses != null) {
+                    for (android.app.ActivityManager.RunningAppProcessInfo processInfo : runningProcesses) {
+                        if (processInfo.processName.equals(context.getPackageName())) {
+                            return processInfo.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e("FlutterOverlayWindowPlugin", "Error checking app foreground state: " + e.getMessage());
+        }
+        return false;
     }
 
    @Override
