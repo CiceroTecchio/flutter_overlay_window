@@ -9,7 +9,7 @@
 
     <application>
         <service 
-            android:name=".OverlayService" 
+            android:name="flutter.overlay.window.flutter_overlay_window.OverlayService" 
             android:foregroundServiceType="specialUse"
             android:exported="false">
             <property 
@@ -18,7 +18,7 @@
         </service>
         
         <activity
-            android:name=".LockScreenOverlayActivity"
+            android:name="flutter.overlay.window.flutter_overlay_window.LockScreenOverlayActivity"
             android:theme="@style/Theme.Transparent"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
