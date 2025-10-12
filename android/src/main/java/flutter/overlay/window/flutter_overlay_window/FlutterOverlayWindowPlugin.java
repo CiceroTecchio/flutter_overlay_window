@@ -194,10 +194,22 @@ public class FlutterOverlayWindowPlugin implements
                 
                 // Check foreground service permissions for Android 12+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (!hasForegroundServicePermission()) {
+                    boolean hasPermission = hasForegroundServicePermission();
+                    if (!hasPermission) {
                         Log.w("FlutterOverlayWindowPlugin", "⚠️ Missing FOREGROUND_SERVICE_SPECIAL_USE permission");
-                        result.error("PERMISSION_ERROR", "FOREGROUND_SERVICE_SPECIAL_USE permission is required for Android 12+", null);
-                        return;
+                        // Don't fail immediately - try to continue with base permission
+                        Log.w("FlutterOverlayWindowPlugin", "🔄 Attempting to continue with base FOREGROUND_SERVICE permission only...");
+                        
+                        // Check if we at least have the base permission
+                        boolean hasBasePermission = context.checkSelfPermission(
+                            "android.permission.FOREGROUND_SERVICE") == 
+                            android.content.pm.PackageManager.PERMISSION_GRANTED;
+                        
+                        if (!hasBasePermission) {
+                            Log.e("FlutterOverlayWindowPlugin", "❌ No foreground service permissions available");
+                            result.error("PERMISSION_ERROR", "FOREGROUND_SERVICE permission is required", null);
+                            return;
+                        }
                     }
                     
                     // Additional check for Android 12+ background restrictions
@@ -452,6 +464,30 @@ public class FlutterOverlayWindowPlugin implements
                 android.content.pm.PackageManager.PERMISSION_GRANTED;
             
             Log.d("FlutterOverlayWindowPlugin", "🔐 Permission check - Base: " + hasBasePermission + ", Special Use: " + hasSpecialUsePermission);
+            
+            // Debug: List all permissions declared in manifest
+            try {
+                android.content.pm.PackageInfo packageInfo = context.getPackageManager().getPackageInfo(context.getPackageName(), android.content.pm.PackageManager.GET_PERMISSIONS);
+                if (packageInfo.requestedPermissions != null) {
+                    Log.d("FlutterOverlayWindowPlugin", "📋 All declared permissions:");
+                    for (String permission : packageInfo.requestedPermissions) {
+                        boolean granted = context.checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                        Log.d("FlutterOverlayWindowPlugin", "  - " + permission + ": " + (granted ? "✅ GRANTED" : "❌ DENIED"));
+                    }
+                }
+            } catch (Exception e) {
+                Log.e("FlutterOverlayWindowPlugin", "Error listing permissions: " + e.getMessage());
+            }
+            
+            // For Android 12+, we need both permissions
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (!hasSpecialUsePermission) {
+                    Log.w("FlutterOverlayWindowPlugin", "⚠️ FOREGROUND_SERVICE_SPECIAL_USE permission not granted");
+                    // Try to continue anyway - some devices may have issues with permission detection
+                    Log.w("FlutterOverlayWindowPlugin", "🔄 Attempting to continue without special use permission...");
+                    return hasBasePermission; // At least require base permission
+                }
+            }
             
             return hasBasePermission && hasSpecialUsePermission;
         }
