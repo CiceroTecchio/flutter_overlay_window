@@ -2,7 +2,6 @@
     package="flutter.overlay.window.flutter_overlay_window">
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
@@ -10,12 +9,7 @@
     <application>
         <service 
             android:name="flutter.overlay.window.flutter_overlay_window.OverlayService" 
-            android:foregroundServiceType="specialUse"
-            android:exported="false">
-            <property 
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="overlay_window_service"/>
-        </service>
+            android:exported="false" />
         
         <activity
             android:name="flutter.overlay.window.flutter_overlay_window.LockScreenOverlayActivity"

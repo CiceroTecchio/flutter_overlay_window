@@ -109,7 +109,7 @@ public class LockScreenOverlayActivity extends Activity {
         });
 
         overlayMessageChannel.setMessageHandler((message, reply) -> {
-            WindowSetup.messenger.send(message);
+            WindowSetup.sendMessage(message);
         });
 
         Intent intent = getIntent();
