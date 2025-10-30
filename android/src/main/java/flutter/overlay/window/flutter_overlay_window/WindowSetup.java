@@ -1,16 +1,17 @@
 package flutter.overlay.window.flutter_overlay_window;
 
 
+import android.util.Log;
 import android.view.Gravity;
 import android.view.WindowManager;
-import android.os.Build;
-
 
 import androidx.core.app.NotificationCompat;
 
 import io.flutter.plugin.common.BasicMessageChannel;
 
 public abstract class WindowSetup {
+
+    private static final String TAG = "WindowSetup";
 
     static int height = WindowManager.LayoutParams.MATCH_PARENT;
     static int width = WindowManager.LayoutParams.MATCH_PARENT;
@@ -33,6 +34,27 @@ public abstract class WindowSetup {
         }
         if (name.equalsIgnoreCase("visibilityPrivate")) {
             notificationVisibility = NotificationCompat.VISIBILITY_PRIVATE;
+        }
+    }
+
+    static void setMessenger(BasicMessageChannel<Object> channel) {
+        messenger = channel;
+    }
+
+    static void clearMessenger() {
+        messenger = null;
+    }
+
+    static void sendMessage(Object message) {
+        BasicMessageChannel<Object> channel = messenger;
+        if (channel == null) {
+            Log.w(TAG, "Attempted to send overlay message, but messenger is null");
+            return;
+        }
+        try {
+            channel.send(message);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to relay overlay message", e);
         }
     }
 
