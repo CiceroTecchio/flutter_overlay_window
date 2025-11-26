@@ -662,7 +662,7 @@ public class FlutterOverlayWindowPlugin implements
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             intents.add(new Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS));
         }
-        intents.add(new Intent(Settings.ACTION_BATTERY_SETTINGS));
+        intents.add(new Intent("android.settings.BATTERY_SETTINGS"));
         intents.add(new Intent("android.intent.action.POWER_USAGE_SUMMARY"));
 
         for (Intent intent : intents) {
