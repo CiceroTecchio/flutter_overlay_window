@@ -224,4 +224,32 @@ class FlutterOverlayWindow {
   static Future<void> openLockScreenPermissionSettings() async {
     await _channel.invokeMethod<void>('openLockScreenPermissionSettings');
   }
+
+  /// Check if battery optimization is currently enabled for the app.
+  /// Returns `true` when the OS may restrict background services.
+  static Future<bool> isBatteryOptimizationEnabled() async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'isBatteryOptimizationEnabled',
+          ) ??
+          false;
+    } on PlatformException catch (error) {
+      log("Error isBatteryOptimizationEnabled: $error");
+      return false;
+    }
+  }
+
+  /// Opens the OEM battery optimization screen so the user can whitelist the app.
+  /// Handles MIUI, Huawei, Oppo, Vivo and falls back to stock Android settings.
+  static Future<bool> openBatteryOptimizationSettings() async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'openBatteryOptimizationSettings',
+          ) ??
+          false;
+    } on PlatformException catch (error) {
+      log("Error openBatteryOptimizationSettings: $error");
+      return false;
+    }
+  }
 }

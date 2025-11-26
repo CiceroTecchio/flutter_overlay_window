@@ -20,6 +20,8 @@ import android.graphics.Point;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.PowerManager;
+import android.os.PowerManager.WakeLock;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -97,6 +99,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private final Object lock = new Object();
     private Handler handler = new Handler(Looper.getMainLooper());
     private boolean sentResumeForThisUnlock = false;
+    
+    // ✅ WakeLock para manter o serviço ativo mesmo com tela bloqueada
+    private PowerManager powerManager;
+    private WakeLock wakeLock;
 
     private BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
@@ -209,6 +215,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public void onDestroy() {
         Log.i("OverlayService", "🗑️ onDestroy() - Iniciando destruição do OverlayService");
         
+        // ✅ Liberar WakeLock se estiver ativo
+        releaseWakeLock();
 
         // ✅ Verificações de segurança para evitar crash nativo
         try {
@@ -419,6 +427,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
         initOverlay(intent);
         Log.d("OverlayService", "✅ initOverlay() concluído");
         Log.d("OverlayService", "🔍 PONTO D: initOverlay() concluído");
+        
+        // ✅ Garantir que o WakeLock está ativo após iniciar o overlay
+        ensureWakeLock();
         
         // Verificar se o overlay foi realmente criado
         Log.d("OverlayService", "📊 Estado final - isRunning: " + isRunning + ", windowManager: " + (windowManager != null) + ", flutterView: " + (flutterView != null));
@@ -949,6 +960,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
         
         // Initialize resources early to prevent null pointer exceptions
         mResources = getApplicationContext().getResources();
+        
+        // ✅ Adquirir WakeLock para manter o serviço ativo mesmo com tela bloqueada
+        acquireWakeLock();
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_USER_PRESENT);
@@ -1243,6 +1257,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
                                 });
                             }
                         }
+                        
+                        // ✅ Verificar e garantir que o WakeLock está ativo
+                        // Isso é crítico para manter o serviço rodando e enviando localização
+                        // mesmo após alguns minutos com a tela bloqueada
+                        handler.post(() -> {
+                            try {
+                                ensureWakeLock();
+                            } catch (Exception e) {
+                                Log.e("OverlayService", "❌ Error ensuring WakeLock: " + e.getMessage());
+                            }
+                        });
                     } catch (Exception e) {
                         Log.e("OverlayService", "❌ Error in notification monitoring: " + e.getMessage());
                     }
@@ -1647,6 +1672,90 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.d("OverlayService", "✅ Overlay brought to front successfully");
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Error bringing overlay to front: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Adquire um WakeLock parcial para manter o CPU ativo mesmo com a tela bloqueada
+     * PARTIAL_WAKE_LOCK mantém o CPU ativo SEM manter a tela ligada
+     * Isso é essencial para manter o serviço rodando e enviando localização continuamente
+     * mesmo quando a tela está desligada/bloqueada
+     */
+    private void acquireWakeLock() {
+        try {
+            if (powerManager == null) {
+                powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            }
+            
+            if (powerManager != null) {
+                // Verificar se o WakeLock já está ativo
+                if (wakeLock != null && wakeLock.isHeld()) {
+                    Log.d("OverlayService", "ℹ️ WakeLock já está ativo");
+                    return;
+                }
+                
+                // Liberar WakeLock anterior se existir mas não estiver ativo
+                if (wakeLock != null) {
+                    try {
+                        wakeLock.release();
+                    } catch (Exception e) {
+                        // Ignorar se já foi liberado
+                    }
+                    wakeLock = null;
+                }
+                
+                // PARTIAL_WAKE_LOCK mantém o CPU ativo mesmo com tela bloqueada/desligada
+                // Isso permite que o serviço continue enviando localização em background
+                wakeLock = powerManager.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "FlutterOverlayWindow::LocationWakeLock"
+                );
+                
+                if (wakeLock != null) {
+                    // Adquirir o WakeLock sem timeout (0 = nunca expira até ser liberado manualmente)
+                    wakeLock.acquire(0);
+                    Log.d("OverlayService", "✅ WakeLock adquirido - CPU será mantido ativo mesmo com tela desligada");
+                } else {
+                    Log.w("OverlayService", "⚠️ Falha ao criar WakeLock");
+                }
+            } else {
+                Log.w("OverlayService", "⚠️ PowerManager é nulo, não é possível adquirir WakeLock");
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Erro ao adquirir WakeLock: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Verifica e re-adquire o WakeLock se necessário
+     * Útil para garantir que o WakeLock continue ativo mesmo após eventos do sistema
+     */
+    private void ensureWakeLock() {
+        try {
+            if (wakeLock == null || !wakeLock.isHeld()) {
+                Log.w("OverlayService", "⚠️ WakeLock não está ativo, re-adquirindo...");
+                releaseWakeLock();
+                acquireWakeLock();
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Erro ao verificar WakeLock: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Libera o WakeLock quando o serviço é destruído
+     */
+    private void releaseWakeLock() {
+        try {
+            if (wakeLock != null) {
+                if (wakeLock.isHeld()) {
+                    wakeLock.release();
+                    Log.d("OverlayService", "✅ WakeLock liberado");
+                }
+                wakeLock = null;
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Erro ao liberar WakeLock: " + e.getMessage(), e);
         }
     }
 

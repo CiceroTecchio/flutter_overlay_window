@@ -3,6 +3,7 @@ package flutter.overlay.window.flutter_overlay_window;
 import android.Manifest;
 import android.app.Activity;
 import android.app.NotificationManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -28,6 +29,9 @@ import androidx.core.app.NotificationManagerCompat;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.media.AudioAttributes;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import io.flutter.FlutterInjector;
@@ -309,6 +313,12 @@ public class FlutterOverlayWindowPlugin implements
                 e.printStackTrace();
                 result.error("LOCK_STATUS_ERROR", "Failed to check device lock status", e.getMessage());
             }
+        } else if (call.method.equals("isBatteryOptimizationEnabled")) {
+            result.success(isBatteryOptimizationEnabled());
+            return;
+        } else if (call.method.equals("openBatteryOptimizationSettings")) {
+            result.success(openBatteryOptimizationSettings());
+            return;
         } else if (call.method.equals("closeOverlay")) {
            try {
                Log.d("FlutterOverlayWindowPlugin", "🔍 closeOverlay() - Iniciando fechamento");
@@ -604,5 +614,219 @@ public class FlutterOverlayWindowPlugin implements
                 serviceDestroyedReceiver = null;
             }
         }, 5000);
+    }
+
+    /**
+     * Check if the app is currently subject to battery optimizations.
+     * Returns true when optimization is enabled (i.e. restrictions are applied).
+     */
+    private boolean isBatteryOptimizationEnabled() {
+        try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                return false; // Battery optimizations introduced in Android 6.0
+            }
+
+            PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            if (pm == null) {
+                return false;
+            }
+            boolean ignoring = pm.isIgnoringBatteryOptimizations(context.getPackageName());
+            return !ignoring;
+        } catch (Exception e) {
+            Log.e("FlutterOverlayWindowPlugin", "Error checking battery optimization: " + e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Tries to open the manufacturer-specific battery optimization screen and falls back to the generic ones.
+     */
+    private boolean openBatteryOptimizationSettings() {
+        try {
+            // Manufacturer-specific settings first
+            if (openOemBatterySettings()) {
+                return true;
+            }
+
+            // Generic settings screen listing all optimized apps
+            Intent ignoreIntent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+            ignoreIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (launchIntent(ignoreIntent)) {
+                return true;
+            }
+
+            // Direct request to disable optimization for this package (requires user confirmation)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Intent requestIntent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                requestIntent.setData(Uri.parse("package:" + context.getPackageName()));
+                requestIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if (launchIntent(requestIntent)) {
+                    return true;
+                }
+            }
+
+            // Fallback to general battery settings
+            Intent batteryIntent = new Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS);
+            batteryIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (launchIntent(batteryIntent)) {
+                return true;
+            }
+
+            // As a last resort, open the app details page
+            Intent appSettings = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            appSettings.setData(Uri.parse("package:" + context.getPackageName()));
+            appSettings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            return launchIntent(appSettings);
+        } catch (Exception e) {
+            Log.e("FlutterOverlayWindowPlugin", "Error opening battery optimization settings: " + e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Attempts to launch OEM specific battery optimization screens.
+     */
+    private boolean openOemBatterySettings() {
+        String manufacturer = Build.MANUFACTURER != null ? Build.MANUFACTURER.toLowerCase(Locale.ROOT) : "";
+        String brand = Build.BRAND != null ? Build.BRAND.toLowerCase(Locale.ROOT) : "";
+        List<Intent> intents = new ArrayList<>();
+
+        switch (manufacturer) {
+            case "xiaomi":
+                intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
+                intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"));
+                Intent miuiIntent = new Intent("miui.intent.action.POWER_HIDE_MODE_APP_LIST");
+                miuiIntent.addCategory(Intent.CATEGORY_DEFAULT);
+                miuiIntent.putExtra("package_name", context.getPackageName());
+                intents.add(miuiIntent);
+                break;
+            case "huawei":
+            case "honor":
+                intents.add(componentIntent("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"));
+                intents.add(componentIntent("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"));
+                intents.add(componentIntent("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"));
+                break;
+            case "oppo":
+                intents.add(componentIntent("com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"));
+                intents.add(componentIntent("com.coloros.powermanager", "com.coloros.powermanager.fuelgaue.PowerSaverModeActivity"));
+                intents.add(componentIntent("com.coloros.powermanager", "com.coloros.powermanager.PowerConsumptionActivity"));
+                break;
+            case "vivo":
+                intents.add(componentIntent("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity"));
+                intents.add(componentIntent("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"));
+                intents.add(componentIntent("com.vivo.abe", "com.vivo.applicationbehaviorengine.ui.ExperienceActivity"));
+                break;
+            case "samsung":
+                intents.add(componentIntent("com.samsung.android.sm", "com.samsung.android.sm.battery.ui.BatteryActivity"));
+                intents.add(componentIntent("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"));
+                intents.add(componentIntent("com.samsung.android.sm", "com.samsung.android.sm.battery.ui.PowerModeActivity"));
+                break;
+            case "oneplus":
+                intents.add(componentIntent("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"));
+                intents.add(componentIntent("com.oneplus.security", "com.oneplus.security.power.powermanager.PowerManagerActivity"));
+                intents.add(componentIntent("com.oneplus.security", "com.oneplus.security.highpowerapp.HighPowerAppActivity"));
+                break;
+            case "realme":
+                intents.add(componentIntent("com.realmepowermanager", "com.realmepowermanager.powerui.PowerAppManagerActivity"));
+                intents.add(componentIntent("com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"));
+                intents.add(componentIntent("com.coloros.powermanager", "com.coloros.powermanager.fuelgaue.PowerSaverModeActivity"));
+                break;
+            case "motorola":
+            case "lenovo":
+                intents.add(componentIntent("com.motorola.ccc", "com.motorola.ccc.android.settings.BatteryManagerActivity"));
+                intents.add(componentIntent("com.motorola.ccc", "com.motorola.ccc.android.appsettings.AppSettingsActivity"));
+                intents.add(componentIntent("com.lenovo.safecenter", "com.lenovo.safecenter.MainTabActivity"));
+                break;
+            case "asus":
+            case "asus_tek computer inc.":
+                intents.add(componentIntent("com.asus.mobilemanager", "com.asus.mobilemanager.MainActivity"));
+                intents.add(componentIntent("com.asus.mobilemanager", "com.asus.mobilemanager.powersaver.PowerSaverSettings"));
+                intents.add(componentIntent("com.asus.mobilemanager", "com.asus.mobilemanager.autostart.AutoStartActivity"));
+                break;
+            case "lg":
+            case "lge":
+                intents.add(componentIntent("com.lge.powersaving", "com.lge.powersavingmode.BatterySaverModeActivity"));
+                intents.add(componentIntent("com.lge.powersaving", "com.lge.powersavingmode.PowerSavingActivity"));
+                intents.add(componentIntent("com.lge.powercontroller", "com.lge.powercontroller.settings.LGPowerControllerActivity"));
+                break;
+            case "nokia":
+            case "hmd global":
+                intents.add(componentIntent("com.evenwell.powersaving.g3", "com.evenwell.powersaving.g3.exception.PowerSaverExceptionActivity"));
+                intents.add(componentIntent("com.evenwell.powersaving.g3", "com.evenwell.powersaving.g3.exception.PowerSaverExceptionAlertActivity"));
+                break;
+            case "sony":
+            case "sonymobile":
+                intents.add(componentIntent("com.sonymobile.cta", "com.sonymobile.cta.SomcPowerSaverActivity"));
+                intents.add(componentIntent("com.sonymobile.superstamina", "com.sonymobile.superstamina.SuperStaminaModeActivity"));
+                break;
+            case "zte":
+                intents.add(componentIntent("com.zte.heartyservice", "com.zte.heartyservice.powermanager.PowerManagerActivity"));
+                intents.add(componentIntent("com.zte.powersavemanager", "com.zte.powersavemanager.PowerManagerActivity"));
+                break;
+            case "tecno":
+            case "infinix":
+            case "itel":
+                intents.add(componentIntent("com.transsion.hilauncher", "com.transsion.athena.whitelist.WhiteListActivity"));
+                intents.add(componentIntent("com.transsion.phonemanager", "com.transsion.phonemanager.activity.PowerManagerActivity"));
+                break;
+            default:
+                break;
+        }
+
+        if (intents.isEmpty()) {
+            switch (brand) {
+                case "redmi":
+                case "poco":
+                    intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
+                    intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"));
+                    break;
+                case "realme":
+                    intents.add(componentIntent("com.realmepowermanager", "com.realmepowermanager.powerui.PowerAppManagerActivity"));
+                    intents.add(componentIntent("com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"));
+                    break;
+                case "motorola":
+                    intents.add(componentIntent("com.motorola.ccc", "com.motorola.ccc.android.settings.BatteryManagerActivity"));
+                    intents.add(componentIntent("com.motorola.ccc", "com.motorola.ccc.android.appsettings.AppSettingsActivity"));
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        for (Intent intent : intents) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (launchIntent(intent)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Safely launches an intent if an activity is available.
+     */
+    private boolean launchIntent(Intent intent) {
+        try {
+            if (intent == null) {
+                return false;
+            }
+            if (intent.resolveActivity(context.getPackageManager()) != null) {
+                context.startActivity(intent);
+                return true;
+            }
+        } catch (Exception e) {
+            Log.w("FlutterOverlayWindowPlugin", "Unable to launch intent: " + e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * Utility to create an intent targeting a specific component.
+     */
+    private Intent componentIntent(String pkg, String cls) {
+        Intent intent = new Intent();
+        intent.setComponent(new ComponentName(pkg, cls));
+        return intent;
     }
 }
