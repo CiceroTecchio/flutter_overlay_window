@@ -83,6 +83,8 @@ public class FlutterOverlayWindowPlugin implements
             result.success(checkOverlayPermission());
         } else if (call.method.equals("isLockScreenPermissionGranted")) {
             result.success(isLockScreenPermissionGranted());
+        } else if (call.method.equals("isBatterySavingModeEnabled")) {
+            result.success(isBatterySavingModeEnabled());
         } else if (call.method.equals("openLockScreenPermissionSettings")) {
             openLockScreenPermissionSettings();
             result.success(null);
@@ -604,5 +606,70 @@ public class FlutterOverlayWindowPlugin implements
                 serviceDestroyedReceiver = null;
             }
         }, 5000);
+    }
+    
+    private boolean isBatterySavingModeEnabled() {
+        try {
+            PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+
+            boolean isPowerSave = powerManager != null && powerManager.isPowerSaveMode();
+            boolean isDeviceIdle = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                    && powerManager != null
+                    && powerManager.isDeviceIdleMode();
+
+            boolean ignoringOptimizations = true;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && powerManager != null) {
+                ignoringOptimizations = powerManager.isIgnoringBatteryOptimizations(context.getPackageName());
+            }
+
+            boolean oemRestriction = isOemBatteryOptimizationEnabled();
+
+            boolean hasRestriction = isPowerSave
+                    || isDeviceIdle
+                    || !ignoringOptimizations
+                    || oemRestriction;
+
+            Log.d(
+                "OverlayPlugin",
+                "Battery saving check => powerSave=" + isPowerSave
+                        + ", idle=" + isDeviceIdle
+                        + ", ignoringOptimizations=" + ignoringOptimizations
+                        + ", oemRestriction=" + oemRestriction
+            );
+            return hasRestriction;
+        } catch (Exception e) {
+            Log.e("OverlayPlugin", "Error checking battery saving mode: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private boolean isOemBatteryOptimizationEnabled() {
+        try {
+            String manufacturer = Build.MANUFACTURER != null ? Build.MANUFACTURER.toLowerCase() : "";
+            if (manufacturer.contains("xiaomi") || manufacturer.contains("redmi") || manufacturer.contains("poco")) {
+                return isSettingFlagEnabled(Settings.System.getInt(context.getContentResolver(), "POWER_SAVE_MODE_OPEN", 0))
+                        || isSettingFlagEnabled(Settings.System.getInt(context.getContentResolver(), "miui_power_save_enable", 0))
+                        || isSettingFlagEnabled(Settings.System.getInt(context.getContentResolver(), "miui_optimization_status", 0));
+            } else if (manufacturer.contains("huawei") || manufacturer.contains("honor")) {
+                return isSettingFlagEnabled(Settings.System.getInt(context.getContentResolver(), "power_save_mode", 0))
+                        || isSettingFlagEnabled(Settings.Global.getInt(context.getContentResolver(), "smart_power_enable", 0));
+            } else if (manufacturer.contains("oppo") || manufacturer.contains("realme") || manufacturer.contains("oneplus")) {
+                return isSettingFlagEnabled(Settings.Global.getInt(context.getContentResolver(), "oppo_super_power_save_mode", 0))
+                        || isSettingFlagEnabled(Settings.System.getInt(context.getContentResolver(), "power_save_mode_open", 0));
+            } else if (manufacturer.contains("vivo") || manufacturer.contains("iqoo")) {
+                return isSettingFlagEnabled(Settings.System.getInt(context.getContentResolver(), "low_power_mode", 0));
+            } else if (manufacturer.contains("samsung")) {
+                return isSettingFlagEnabled(Settings.Global.getInt(context.getContentResolver(), "low_power", 0))
+                        || isSettingFlagEnabled(Settings.Global.getInt(context.getContentResolver(), "power_saving_mode", 0));
+            }
+        } catch (Exception e) {
+            Log.w("OverlayPlugin", "OEM specific battery optimization check failed: " + e.getMessage());
+        }
+        return false;
+    }
+
+    private boolean isSettingFlagEnabled(int value) {
+        return value == 1;
     }
 }
