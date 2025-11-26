@@ -1,5 +1,6 @@
 package flutter.overlay.window.flutter_overlay_window;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -926,10 +927,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
             boolean hasBasePermission = getApplicationContext().checkSelfPermission(
                 "android.permission.FOREGROUND_SERVICE") == 
                 android.content.pm.PackageManager.PERMISSION_GRANTED;
+            boolean hasLocationPermission = true;
+            if (Build.VERSION.SDK_INT >= 34) {
+                hasLocationPermission = getApplicationContext().checkSelfPermission(
+                    Manifest.permission.FOREGROUND_SERVICE_LOCATION) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED;
+            }
             
-            Log.d("OverlayService", "🔐 Permission check - FOREGROUND_SERVICE: " + hasBasePermission);
+            Log.d("OverlayService", "🔐 Permission check - FOREGROUND_SERVICE: " + hasBasePermission + ", FOREGROUND_SERVICE_LOCATION: " + hasLocationPermission);
             
-            return hasBasePermission;
+            return hasBasePermission && hasLocationPermission;
         }
         return true; // For older versions, assume permission is granted
     }
@@ -1140,6 +1147,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.w("OverlayService", "⚠️ Started foreground service but FOREGROUND_SERVICE permission check returned false");
         } else {
             Log.d("OverlayService", "✅ Foreground service started successfully");
+            startNotificationMonitoring();
         }
 
         instance = this;
