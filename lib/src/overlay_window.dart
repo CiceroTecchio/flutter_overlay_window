@@ -252,4 +252,28 @@ class FlutterOverlayWindow {
       return false;
     }
   }
+
+  /// Opens the system battery saver settings so the user can disable
+  /// the global power saving mode for the device.
+  static Future<bool> openSystemBatterySettings() async {
+    try {
+      return await _channel.invokeMethod<bool>('openSystemBatterySettings') ??
+          false;
+    } on PlatformException catch (error) {
+      log("Error openSystemBatterySettings: $error");
+      return false;
+    }
+  }
+
+  /// Check if the global system battery saver (power save mode) is enabled.
+  /// When true, the entire device is under economy mode, which can restrict services.
+  static Future<bool> isSystemBatterySaverOn() async {
+    try {
+      return await _channel.invokeMethod<bool>('isSystemBatterySaverOn') ??
+          false;
+    } on PlatformException catch (error) {
+      log("Error isSystemBatterySaverOn: $error");
+      return false;
+    }
+  }
 }

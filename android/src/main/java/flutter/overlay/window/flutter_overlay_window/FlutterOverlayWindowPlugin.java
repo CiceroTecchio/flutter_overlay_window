@@ -319,6 +319,12 @@ public class FlutterOverlayWindowPlugin implements
         } else if (call.method.equals("openBatteryOptimizationSettings")) {
             result.success(openBatteryOptimizationSettings());
             return;
+        } else if (call.method.equals("openSystemBatterySettings")) {
+            result.success(openSystemBatterySettings());
+            return;
+        } else if (call.method.equals("isSystemBatterySaverOn")) {
+            result.success(isSystemBatterySaverOn());
+            return;
         } else if (call.method.equals("closeOverlay")) {
            try {
                Log.d("FlutterOverlayWindowPlugin", "🔍 closeOverlay() - Iniciando fechamento");
@@ -689,15 +695,31 @@ public class FlutterOverlayWindowPlugin implements
     private boolean openOemBatterySettings() {
         String manufacturer = Build.MANUFACTURER != null ? Build.MANUFACTURER.toLowerCase(Locale.ROOT) : "";
         String brand = Build.BRAND != null ? Build.BRAND.toLowerCase(Locale.ROOT) : "";
+        String packageName = context.getPackageName();
+        String appLabel = getAppLabel();
+        int appUid = context.getApplicationInfo().uid;
         List<Intent> intents = new ArrayList<>();
 
         switch (manufacturer) {
             case "xiaomi":
                 intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
-                intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"));
+
+                Intent hiddenAppsIntent = componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity");
+                hiddenAppsIntent.putExtra("package_name", packageName);
+                hiddenAppsIntent.putExtra("package_label", appLabel);
+                hiddenAppsIntent.putExtra("package_uid", appUid);
+                intents.add(hiddenAppsIntent);
+
+                Intent powerSubIntent = componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSubSettings");
+                powerSubIntent.putExtra("package_name", packageName);
+                intents.add(powerSubIntent);
+
+                Intent standbyIntent = componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettingsNewActivity");
+                intents.add(standbyIntent);
+
                 Intent miuiIntent = new Intent("miui.intent.action.POWER_HIDE_MODE_APP_LIST");
                 miuiIntent.addCategory(Intent.CATEGORY_DEFAULT);
-                miuiIntent.putExtra("package_name", context.getPackageName());
+                miuiIntent.putExtra("package_name", packageName);
                 intents.add(miuiIntent);
                 break;
             case "huawei":
@@ -778,7 +800,17 @@ public class FlutterOverlayWindowPlugin implements
                 case "redmi":
                 case "poco":
                     intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
-                    intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"));
+
+                    Intent hiddenBrandIntent = componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity");
+                    hiddenBrandIntent.putExtra("package_name", packageName);
+                    hiddenBrandIntent.putExtra("package_label", appLabel);
+                    hiddenBrandIntent.putExtra("package_uid", appUid);
+                    intents.add(hiddenBrandIntent);
+
+                    Intent miuiBrandIntent = new Intent("miui.intent.action.POWER_HIDE_MODE_APP_LIST");
+                    miuiBrandIntent.addCategory(Intent.CATEGORY_DEFAULT);
+                    miuiBrandIntent.putExtra("package_name", packageName);
+                    intents.add(miuiBrandIntent);
                     break;
                 case "realme":
                     intents.add(componentIntent("com.realmepowermanager", "com.realmepowermanager.powerui.PowerAppManagerActivity"));
@@ -800,6 +832,35 @@ public class FlutterOverlayWindowPlugin implements
             }
         }
 
+        return false;
+    }
+
+    /**
+     * Opens the system-level battery settings / saver panel so the user can disable global economy mode.
+     */
+    private boolean openSystemBatterySettings() {
+        List<Intent> intents = new ArrayList<>();
+
+        // Android 6.0+ dedicated battery saver toggle
+        intents.add(new Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS));
+
+        // Power usage summary (available em vários fabricantes Google Play Services)
+        intents.add(new Intent(Settings.ACTION_POWER_USAGE_SUMMARY));
+
+        // Fallback geral de bateria
+        intents.add(new Intent(Settings.ACTION_BATTERY_SETTINGS));
+
+        // OneUI / MIUI / ColorOS específicos caso existam
+        intents.add(componentIntent("com.samsung.android.sm", "com.samsung.android.sm.battery.ui.BatteryActivity"));
+        intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
+        intents.add(componentIntent("com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"));
+
+        for (Intent intent : intents) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (launchIntent(intent)) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -828,5 +889,29 @@ public class FlutterOverlayWindowPlugin implements
         Intent intent = new Intent();
         intent.setComponent(new ComponentName(pkg, cls));
         return intent;
+    }
+
+    private String getAppLabel() {
+        try {
+            return context.getApplicationInfo().loadLabel(context.getPackageManager()).toString();
+        } catch (Exception e) {
+            return context.getPackageName();
+        }
+    }
+
+    /**
+     * Checks if the device-wide Battery Saver / Power Save mode is currently enabled.
+     */
+    private boolean isSystemBatterySaverOn() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return false;
+        }
+        try {
+            PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            return powerManager != null && powerManager.isPowerSaveMode();
+        } catch (Exception e) {
+            Log.e("FlutterOverlayWindowPlugin", "Error checking system battery saver", e);
+            return false;
+        }
     }
 }
