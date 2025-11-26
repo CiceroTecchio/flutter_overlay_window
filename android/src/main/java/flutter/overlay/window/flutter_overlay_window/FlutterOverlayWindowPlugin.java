@@ -701,38 +701,39 @@ public class FlutterOverlayWindowPlugin implements
         List<Intent> intents = new ArrayList<>();
 
         switch (manufacturer) {
-            case "xiaomi":
-                intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
-                intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettingsNewActivity"));
-                intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSubSettings"));
-                intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.SmartPowerMainActivity"));
-                intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.BackgroundAppsManageActivity"));
-                intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsContainerManagementActivity"));
+            case "xiaomi": {
+                List<Intent> prioritized = new ArrayList<>();
 
-                Intent hiddenAppsIntent = componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity");
-                intents.add(attachMiuiExtras(hiddenAppsIntent, packageName, appLabel, appUid));
+                prioritized.add(attachMiuiExtras(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"), packageName, appLabel, appUid));
+                prioritized.add(attachMiuiExtras(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsContainerManagementActivity"), packageName, appLabel, appUid));
+                prioritized.add(attachMiuiExtras(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.BackgroundAppsManageActivity"), packageName, appLabel, appUid));
+                prioritized.add(attachMiuiExtras(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.SmartPowerMainActivity"), packageName, appLabel, appUid));
+                prioritized.add(attachMiuiExtras(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.PowerSettingsActivity"), packageName, appLabel, appUid));
+                prioritized.add(attachMiuiExtras(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.PowerKeeperSettingsActivity"), packageName, appLabel, appUid));
 
-                Intent powerKeeperIntent = componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.PowerSettingsActivity");
-                intents.add(attachMiuiExtras(powerKeeperIntent, packageName, appLabel, appUid));
-
-                Intent appDetailsIntent = componentIntent("com.miui.securitycenter", "com.miui.appmanager.ApplicationsDetailsActivity");
-                intents.add(attachMiuiExtras(appDetailsIntent, packageName, appLabel, appUid));
-
-                Intent autoStartIntent = new Intent("miui.intent.action.APP_PERM_EDITOR");
-                autoStartIntent.putExtra("extra_pkgname", packageName);
-                intents.add(autoStartIntent);
+                Intent powerKeeperManage = new Intent("miui.intent.action.OP_AUTO_START");
+                prioritized.add(attachMiuiExtras(powerKeeperManage, packageName, appLabel, appUid));
 
                 Intent hiddenListIntent = new Intent("miui.intent.action.POWER_HIDE_MODE_APP_LIST");
                 hiddenListIntent.addCategory(Intent.CATEGORY_DEFAULT);
-                intents.add(attachMiuiExtras(hiddenListIntent, packageName, appLabel, appUid));
+                prioritized.add(attachMiuiExtras(hiddenListIntent, packageName, appLabel, appUid));
+
+                Intent autoStartIntent = new Intent("miui.intent.action.APP_PERM_EDITOR");
+                prioritized.add(attachMiuiExtras(autoStartIntent, packageName, appLabel, appUid));
+
+                Intent appDetailsIntent = componentIntent("com.miui.securitycenter", "com.miui.appmanager.ApplicationsDetailsActivity");
+                prioritized.add(attachMiuiExtras(appDetailsIntent, packageName, appLabel, appUid));
 
                 Intent autoStartLegacy = new Intent("miui.intent.action.OPTIMIZE_CENTER");
-                autoStartLegacy.putExtra("package_name", packageName);
-                intents.add(autoStartLegacy);
+                prioritized.add(attachMiuiExtras(autoStartLegacy, packageName, appLabel, appUid));
 
-                Intent powerKeeperManage = new Intent("miui.intent.action.OP_AUTO_START");
-                intents.add(attachMiuiExtras(powerKeeperManage, packageName, appLabel, appUid));
+                prioritized.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSubSettings"));
+                prioritized.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettingsNewActivity"));
+                prioritized.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
+
+                intents.addAll(prioritized);
                 break;
+            }
             case "huawei":
             case "honor":
                 intents.add(componentIntent("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"));
@@ -810,22 +811,25 @@ public class FlutterOverlayWindowPlugin implements
             switch (brand) {
                 case "redmi":
                 case "poco":
-                    intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
-                    intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettingsNewActivity"));
-                    intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.SmartPowerMainActivity"));
-
                     Intent hiddenBrandIntent = componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity");
                     intents.add(attachMiuiExtras(hiddenBrandIntent, packageName, appLabel, appUid));
+
+                    intents.add(attachMiuiExtras(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsContainerManagementActivity"), packageName, appLabel, appUid));
+                    intents.add(attachMiuiExtras(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.BackgroundAppsManageActivity"), packageName, appLabel, appUid));
+                    intents.add(attachMiuiExtras(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.SmartPowerMainActivity"), packageName, appLabel, appUid));
 
                     Intent miuiBrandIntent = new Intent("miui.intent.action.POWER_HIDE_MODE_APP_LIST");
                     miuiBrandIntent.addCategory(Intent.CATEGORY_DEFAULT);
                     intents.add(attachMiuiExtras(miuiBrandIntent, packageName, appLabel, appUid));
 
+                    Intent brandAutoStart = new Intent("miui.intent.action.APP_PERM_EDITOR");
+                    intents.add(attachMiuiExtras(brandAutoStart, packageName, appLabel, appUid));
+
                     Intent brandAppDetails = componentIntent("com.miui.securitycenter", "com.miui.appmanager.ApplicationsDetailsActivity");
                     intents.add(attachMiuiExtras(brandAppDetails, packageName, appLabel, appUid));
 
-                    Intent brandAutoStart = new Intent("miui.intent.action.APP_PERM_EDITOR");
-                    intents.add(attachMiuiExtras(brandAutoStart, packageName, appLabel, appUid));
+                    intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
+                    intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettingsNewActivity"));
                     break;
                 case "realme":
                     intents.add(componentIntent("com.realmepowermanager", "com.realmepowermanager.powerui.PowerAppManagerActivity"));
