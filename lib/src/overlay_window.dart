@@ -220,14 +220,6 @@ class FlutterOverlayWindow {
     return _res ?? true;
   }
 
-  /// Check if the battery saving mode is enabled
-  static Future<bool> isBatterySavingModeEnabled() async {
-    final bool? _res = await _channel.invokeMethod<bool?>(
-      'isBatterySavingModeEnabled',
-    );
-    return _res ?? false;
-  }
-
   /// Open the lock screen permission settings page
   static Future<void> openLockScreenPermissionSettings() async {
     await _channel.invokeMethod<void>('openLockScreenPermissionSettings');
