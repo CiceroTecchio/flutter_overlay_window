@@ -236,4 +236,15 @@ class FlutterOverlayWindow {
       return false;
     }
   }
+
+  /// Returns true when the device-wide battery saver is enabled.
+  static Future<bool> isSystemBatterySaverOn() async {
+    try {
+      return await _channel.invokeMethod<bool>('isSystemBatterySaverOn') ??
+          false;
+    } on PlatformException catch (error) {
+      log("Error isSystemBatterySaverOn: $error");
+      return false;
+    }
+  }
 }

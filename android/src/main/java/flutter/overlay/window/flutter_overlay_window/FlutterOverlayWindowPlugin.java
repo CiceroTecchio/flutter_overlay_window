@@ -316,6 +316,9 @@ public class FlutterOverlayWindowPlugin implements
         } else if (call.method.equals("openSystemBatterySettings")) {
             result.success(openSystemBatterySettings());
             return;
+        } else if (call.method.equals("isSystemBatterySaverOn")) {
+            result.success(isSystemBatterySaverOn());
+            return;
         } else if (call.method.equals("closeOverlay")) {
            try {
                Log.d("FlutterOverlayWindowPlugin", "🔍 closeOverlay() - Iniciando fechamento");
@@ -709,17 +712,54 @@ public class FlutterOverlayWindowPlugin implements
 
     /**
      * Checks if the device-wide Battery Saver / Power Save mode is currently enabled.
+     * Uses the stock PowerManager API and falls back to Xiaomi / HyperOS specific flags.
      */
     private boolean isSystemBatterySaverOn() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+                if (powerManager != null && powerManager.isPowerSaveMode()) {
+                    return true;
+                }
+            } catch (Exception e) {
+                Log.w("FlutterOverlayWindowPlugin", "Unable to read PowerManager saver flag", e);
+            }
+        }
+
+        if (isXiaomiBasedRom()) {
+            int miuiFlag = readIntSetting("POWER_SAVE_MODE_OPEN");
+            if (miuiFlag == 1) {
+                return true;
+            }
+            miuiFlag = readIntSetting("power_save_mode_open");
+            if (miuiFlag == 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isXiaomiBasedRom() {
+        try {
+            String manufacturer = Build.MANUFACTURER != null ? Build.MANUFACTURER.toLowerCase(Locale.US) : "";
+            String brand = Build.BRAND != null ? Build.BRAND.toLowerCase(Locale.US) : "";
+            return manufacturer.contains("xiaomi")
+                    || manufacturer.contains("redmi")
+                    || manufacturer.contains("poco")
+                    || brand.contains("xiaomi")
+                    || brand.contains("redmi")
+                    || brand.contains("poco");
+        } catch (Exception e) {
             return false;
         }
+    }
+
+    private int readIntSetting(String key) {
         try {
-            PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-            return powerManager != null && powerManager.isPowerSaveMode();
-        } catch (Exception e) {
-            Log.e("FlutterOverlayWindowPlugin", "Error checking system battery saver", e);
-            return false;
+            return Settings.System.getInt(context.getContentResolver(), key, 0);
+        } catch (Exception ignored) {
+            return 0;
         }
     }
 }
