@@ -845,10 +845,10 @@ public class FlutterOverlayWindowPlugin implements
         intents.add(new Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS));
 
         // Power usage summary (available em vários fabricantes Google Play Services)
-        intents.add(new Intent(Settings.ACTION_POWER_USAGE_SUMMARY));
+        intents.add(new Intent("android.intent.action.POWER_USAGE_SUMMARY"));
 
         // Fallback geral de bateria
-        intents.add(new Intent(Settings.ACTION_BATTERY_SETTINGS));
+        intents.add(new Intent("android.settings.BATTERY_SETTINGS"));
 
         // OneUI / MIUI / ColorOS específicos caso existam
         intents.add(componentIntent("com.samsung.android.sm", "com.samsung.android.sm.battery.ui.BatteryActivity"));
