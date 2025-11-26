@@ -703,24 +703,35 @@ public class FlutterOverlayWindowPlugin implements
         switch (manufacturer) {
             case "xiaomi":
                 intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
+                intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettingsNewActivity"));
+                intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSubSettings"));
+                intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.SmartPowerMainActivity"));
+                intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.BackgroundAppsManageActivity"));
+                intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsContainerManagementActivity"));
 
                 Intent hiddenAppsIntent = componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity");
-                hiddenAppsIntent.putExtra("package_name", packageName);
-                hiddenAppsIntent.putExtra("package_label", appLabel);
-                hiddenAppsIntent.putExtra("package_uid", appUid);
-                intents.add(hiddenAppsIntent);
+                intents.add(attachMiuiExtras(hiddenAppsIntent, packageName, appLabel, appUid));
 
-                Intent powerSubIntent = componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSubSettings");
-                powerSubIntent.putExtra("package_name", packageName);
-                intents.add(powerSubIntent);
+                Intent powerKeeperIntent = componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.PowerSettingsActivity");
+                intents.add(attachMiuiExtras(powerKeeperIntent, packageName, appLabel, appUid));
 
-                Intent standbyIntent = componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettingsNewActivity");
-                intents.add(standbyIntent);
+                Intent appDetailsIntent = componentIntent("com.miui.securitycenter", "com.miui.appmanager.ApplicationsDetailsActivity");
+                intents.add(attachMiuiExtras(appDetailsIntent, packageName, appLabel, appUid));
 
-                Intent miuiIntent = new Intent("miui.intent.action.POWER_HIDE_MODE_APP_LIST");
-                miuiIntent.addCategory(Intent.CATEGORY_DEFAULT);
-                miuiIntent.putExtra("package_name", packageName);
-                intents.add(miuiIntent);
+                Intent autoStartIntent = new Intent("miui.intent.action.APP_PERM_EDITOR");
+                autoStartIntent.putExtra("extra_pkgname", packageName);
+                intents.add(autoStartIntent);
+
+                Intent hiddenListIntent = new Intent("miui.intent.action.POWER_HIDE_MODE_APP_LIST");
+                hiddenListIntent.addCategory(Intent.CATEGORY_DEFAULT);
+                intents.add(attachMiuiExtras(hiddenListIntent, packageName, appLabel, appUid));
+
+                Intent autoStartLegacy = new Intent("miui.intent.action.OPTIMIZE_CENTER");
+                autoStartLegacy.putExtra("package_name", packageName);
+                intents.add(autoStartLegacy);
+
+                Intent powerKeeperManage = new Intent("miui.intent.action.OP_AUTO_START");
+                intents.add(attachMiuiExtras(powerKeeperManage, packageName, appLabel, appUid));
                 break;
             case "huawei":
             case "honor":
@@ -800,17 +811,21 @@ public class FlutterOverlayWindowPlugin implements
                 case "redmi":
                 case "poco":
                     intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
+                    intents.add(componentIntent("com.miui.securitycenter", "com.miui.powercenter.PowerSettingsNewActivity"));
+                    intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.SmartPowerMainActivity"));
 
                     Intent hiddenBrandIntent = componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity");
-                    hiddenBrandIntent.putExtra("package_name", packageName);
-                    hiddenBrandIntent.putExtra("package_label", appLabel);
-                    hiddenBrandIntent.putExtra("package_uid", appUid);
-                    intents.add(hiddenBrandIntent);
+                    intents.add(attachMiuiExtras(hiddenBrandIntent, packageName, appLabel, appUid));
 
                     Intent miuiBrandIntent = new Intent("miui.intent.action.POWER_HIDE_MODE_APP_LIST");
                     miuiBrandIntent.addCategory(Intent.CATEGORY_DEFAULT);
-                    miuiBrandIntent.putExtra("package_name", packageName);
-                    intents.add(miuiBrandIntent);
+                    intents.add(attachMiuiExtras(miuiBrandIntent, packageName, appLabel, appUid));
+
+                    Intent brandAppDetails = componentIntent("com.miui.securitycenter", "com.miui.appmanager.ApplicationsDetailsActivity");
+                    intents.add(attachMiuiExtras(brandAppDetails, packageName, appLabel, appUid));
+
+                    Intent brandAutoStart = new Intent("miui.intent.action.APP_PERM_EDITOR");
+                    intents.add(attachMiuiExtras(brandAutoStart, packageName, appLabel, appUid));
                     break;
                 case "realme":
                     intents.add(componentIntent("com.realmepowermanager", "com.realmepowermanager.powerui.PowerAppManagerActivity"));
@@ -888,6 +903,19 @@ public class FlutterOverlayWindowPlugin implements
     private Intent componentIntent(String pkg, String cls) {
         Intent intent = new Intent();
         intent.setComponent(new ComponentName(pkg, cls));
+        return intent;
+    }
+
+    private Intent attachMiuiExtras(Intent intent, String packageName, String appLabel, int appUid) {
+        if (intent == null) return null;
+        try {
+            intent.putExtra("package_name", packageName);
+            intent.putExtra("package_label", appLabel);
+            intent.putExtra("package_uid", appUid);
+            intent.putExtra("extra_pkgname", packageName);
+            intent.putExtra("app_name", appLabel);
+        } catch (Exception ignored) {
+        }
         return intent;
     }
 
