@@ -313,7 +313,9 @@ public class FlutterOverlayWindowPlugin implements
                 e.printStackTrace();
                 result.error("LOCK_STATUS_ERROR", "Failed to check device lock status", e.getMessage());
             }
-
+        } else if (call.method.equals("openSystemBatterySettings")) {
+            result.success(openSystemBatterySettings());
+            return;
         } else if (call.method.equals("closeOverlay")) {
            try {
                Log.d("FlutterOverlayWindowPlugin", "🔍 closeOverlay() - Iniciando fechamento");
@@ -609,5 +611,115 @@ public class FlutterOverlayWindowPlugin implements
                 serviceDestroyedReceiver = null;
             }
         }, 5000);
+    }
+
+    /**
+     * Abre a tela nativa onde o usuário altera o modo de economia de bateria.
+     * Primeiro tenta os menus MIUI / HyperOS e depois aplica fallbacks genéricos
+     * seguindo o mesmo padrão dos demais métodos de permissões.
+     */
+    private boolean openSystemBatterySettings() {
+        try {
+            Intent intent = new Intent("miui.intent.action.POWER_MANAGER");
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+            return true;
+        } catch (Exception miuiPrimary) {
+            try {
+                Intent intent = new Intent();
+                intent.setComponent(new ComponentName(
+                        "com.miui.securitycenter",
+                        "com.miui.powercenter.PowerSettings"
+                ));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+                return true;
+            } catch (Exception miuiFallback) {
+                return openBatterySettingsFallbacks();
+            }
+        }
+    }
+
+    private boolean openBatterySettingsFallbacks() {
+        List<Intent> intents = new ArrayList<>();
+
+        // MIUI / HyperOS intents extras
+        intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.activity.PowerManagerActivity"));
+        intents.add(componentIntent("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsContainerManagementActivity"));
+
+        // Samsung OneUI
+        intents.add(componentIntent("com.samsung.android.sm", "com.samsung.android.sm.battery.ui.BatteryActivity"));
+        intents.add(componentIntent("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"));
+
+        // ColorOS / Realme / Oppo
+        intents.add(componentIntent("com.coloros.phonemanager", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"));
+        intents.add(componentIntent("com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerSavingModeActivity"));
+
+        // Huawei / Honor
+        intents.add(componentIntent("com.huawei.systemmanager", "com.huawei.systemmanager.power.ui.HwPowerManagerActivity"));
+
+        // Stock Android panels
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            intents.add(new Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS));
+        }
+        intents.add(new Intent(Settings.ACTION_BATTERY_SETTINGS));
+        intents.add(new Intent("android.intent.action.POWER_USAGE_SUMMARY"));
+
+        for (Intent intent : intents) {
+            if (intent == null) continue;
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (launchIntent(intent)) {
+                return true;
+            }
+        }
+
+        // Último recurso: abre os detalhes do app
+        Intent details = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        details.setData(Uri.fromParts("package", context.getPackageName(), null));
+        details.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return launchIntent(details);
+    }
+
+    /**
+     * Safely launches an intent if an activity is available.
+     */
+    private boolean launchIntent(Intent intent) {
+        try {
+            if (intent == null) {
+                return false;
+            }
+            if (intent.resolveActivity(context.getPackageManager()) != null) {
+                context.startActivity(intent);
+                return true;
+            }
+        } catch (Exception e) {
+            Log.w("FlutterOverlayWindowPlugin", "Unable to launch intent: " + e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * Utility to create an intent targeting a specific component.
+     */
+    private Intent componentIntent(String pkg, String cls) {
+        Intent intent = new Intent();
+        intent.setComponent(new ComponentName(pkg, cls));
+        return intent;
+    }
+
+    /**
+     * Checks if the device-wide Battery Saver / Power Save mode is currently enabled.
+     */
+    private boolean isSystemBatterySaverOn() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return false;
+        }
+        try {
+            PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            return powerManager != null && powerManager.isPowerSaveMode();
+        } catch (Exception e) {
+            Log.e("FlutterOverlayWindowPlugin", "Error checking system battery saver", e);
+            return false;
+        }
     }
 }

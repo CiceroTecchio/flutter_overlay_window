@@ -224,4 +224,16 @@ class FlutterOverlayWindow {
   static Future<void> openLockScreenPermissionSettings() async {
     await _channel.invokeMethod<void>('openLockScreenPermissionSettings');
   }
+
+  /// Opens the system battery saver settings so the user can disable
+  /// the global power saving mode for the device.
+  static Future<bool> openSystemBatterySettings() async {
+    try {
+      return await _channel.invokeMethod<bool>('openSystemBatterySettings') ??
+          false;
+    } on PlatformException catch (error) {
+      log("Error openSystemBatterySettings: $error");
+      return false;
+    }
+  }
 }
