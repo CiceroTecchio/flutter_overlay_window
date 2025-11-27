@@ -21,6 +21,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.os.PowerManager.WakeLock;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -103,6 +104,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
     // ✅ WakeLock para manter o serviço ativo mesmo com tela bloqueada
     private PowerManager powerManager;
     private WakeLock wakeLock;
+    private static final long WAKE_LOCK_FAILURE_WINDOW_MS = 10000L;
+    private static final int WAKE_LOCK_FAILURE_THRESHOLD = 3;
+    private static volatile long lastWakeLockStableTimestamp = 0L;
+    private static volatile long lastWakeLockFailureTimestamp = 0L;
+    private static volatile int wakeLockFailureCount = 0;
+    private static volatile boolean wakeLockRestrictedBySystem = false;
+    private static volatile long lastWakeLockWarningTimestamp = 0L;
 
     private BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
@@ -1710,10 +1718,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     PowerManager.PARTIAL_WAKE_LOCK,
                     "FlutterOverlayWindow::LocationWakeLock"
                 );
+                wakeLock.setReferenceCounted(false);
                 
                 if (wakeLock != null) {
                     // Adquirir o WakeLock sem timeout (0 = nunca expira até ser liberado manualmente)
                     wakeLock.acquire(0);
+                    lastWakeLockStableTimestamp = SystemClock.elapsedRealtime();
+                    wakeLockRestrictedBySystem = false;
+                    wakeLockFailureCount = 0;
                     Log.d("OverlayService", "✅ WakeLock adquirido - CPU será mantido ativo mesmo com tela desligada");
                 } else {
                     Log.w("OverlayService", "⚠️ Falha ao criar WakeLock");
@@ -1733,10 +1745,29 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private void ensureWakeLock() {
         try {
             if (wakeLock == null || !wakeLock.isHeld()) {
-                Log.w("OverlayService", "⚠️ WakeLock não está ativo, re-adquirindo...");
+                long now = SystemClock.elapsedRealtime();
+                if (lastWakeLockStableTimestamp > 0 && (now - lastWakeLockStableTimestamp) < WAKE_LOCK_FAILURE_WINDOW_MS) {
+                    wakeLockFailureCount++;
+                } else {
+                    wakeLockFailureCount = 1;
+                }
+                lastWakeLockFailureTimestamp = now;
+                if (wakeLockFailureCount >= WAKE_LOCK_FAILURE_THRESHOLD) {
+                    wakeLockRestrictedBySystem = true;
+                }
+
+                if (now - lastWakeLockWarningTimestamp > 10000L) {
+                    Log.w("OverlayService", "⚠️ WakeLock não está ativo, re-adquirindo...");
+                    lastWakeLockWarningTimestamp = now;
+                } else {
+                    Log.d("OverlayService", "ℹ️ Re-adquirindo WakeLock (controle MIUI)");
+                }
                 releaseWakeLock();
                 acquireWakeLock();
             }
+        } catch (SecurityException se) {
+            wakeLockRestrictedBySystem = true;
+            Log.e("OverlayService", "❌ Permissão de WakeLock negada pelo sistema", se);
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Erro ao verificar WakeLock: " + e.getMessage(), e);
         }
@@ -1757,6 +1788,20 @@ public class OverlayService extends Service implements View.OnTouchListener {
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Erro ao liberar WakeLock: " + e.getMessage(), e);
         }
+    }
+
+    public static boolean isWakeLockRestrictedBySystem() {
+        if (!wakeLockRestrictedBySystem) {
+            return false;
+        }
+        long now = SystemClock.elapsedRealtime();
+        // Se passaram muitos segundos desde o último problema, considerar estabilizado
+        if (now - lastWakeLockFailureTimestamp > (WAKE_LOCK_FAILURE_WINDOW_MS * 3)) {
+            wakeLockRestrictedBySystem = false;
+            wakeLockFailureCount = 0;
+            return false;
+        }
+        return true;
     }
 
 }

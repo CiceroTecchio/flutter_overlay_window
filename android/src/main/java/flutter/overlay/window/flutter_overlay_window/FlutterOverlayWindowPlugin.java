@@ -20,6 +20,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
@@ -62,6 +63,8 @@ public class FlutterOverlayWindowPlugin implements
     private static final String OPSTR_RUN_ANY_IN_BACKGROUND = "android:run_any_in_background";
     private static final String OPSTR_RUN_IN_BACKGROUND = "android:run_in_background";
     private static final int STANDBY_BUCKET_NEVER = 50;
+
+    private static final long MIUI_PROVIDER_RETRY_WINDOW_MS = 10 * 60 * 1000L; // 10 min
 
     private MethodChannel channel;
     private Context context;
@@ -751,12 +754,19 @@ public class FlutterOverlayWindowPlugin implements
         return false;
     }
 
+    private static volatile boolean miuiProviderAccessible = true;
+    private static volatile long lastMiuiProviderFailure = 0L;
+
     /**
      * Returns true when the current app is still subject to battery optimizations /
      * power saving modes. On Xiaomi / HyperOS devices we try to detect the per-app
      * "battery saver" profile; otherwise we fall back to standard Doze detection.
      */
     private boolean isAppBatterySaverOn() {
+        if (OverlayService.isWakeLockRestrictedBySystem()) {
+            Log.d("FlutterOverlayWindowPlugin", "WakeLock restrito pelo sistema - interpretando como economia de energia por app");
+            return true;
+        }
         if (isXiaomiBasedRom()) {
             Boolean miuiState = resolveMiuiBatterySaverState();
             if (miuiState != null) {
@@ -795,6 +805,11 @@ public class FlutterOverlayWindowPlugin implements
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             return null;
         }
+
+        long now = SystemClock.elapsedRealtime();
+        if (!miuiProviderAccessible && (now - lastMiuiProviderFailure) >= MIUI_PROVIDER_RETRY_WINDOW_MS) {
+            miuiProviderAccessible = true;
+        }
         try {
             AppOpsManager appOpsManager = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
             if (appOpsManager == null) {
@@ -824,9 +839,11 @@ public class FlutterOverlayWindowPlugin implements
                 }
             }
 
-            Boolean providerState = queryMiuiPowerKeeperProvider();
-            if (providerState != null) {
-                return providerState;
+            if (miuiProviderAccessible) {
+                Boolean providerState = queryMiuiPowerKeeperProvider();
+                if (providerState != null) {
+                    return providerState;
+                }
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -841,7 +858,7 @@ public class FlutterOverlayWindowPlugin implements
                 }
             }
         } catch (SecurityException se) {
-            Log.w("FlutterOverlayWindowPlugin", "UsageStats permission missing; MIUI saver status unknown", se);
+            Log.w("FlutterOverlayWindowPlugin", "UsageStats permission missing; MIUI saver status unknown");
             return null;
         } catch (Exception e) {
             Log.w("FlutterOverlayWindowPlugin", "Unable to resolve MIUI battery saver flag", e);
@@ -898,7 +915,9 @@ public class FlutterOverlayWindowPlugin implements
                 return true;
             }
         } catch (SecurityException se) {
-            Log.d("FlutterOverlayWindowPlugin", "MIUI PowerKeeper provider not accessible", se);
+            miuiProviderAccessible = false;
+            lastMiuiProviderFailure = SystemClock.elapsedRealtime();
+            Log.i("FlutterOverlayWindowPlugin", "MIUI PowerKeeper provider not accessible, falling back to other heuristics");
             return null;
         } catch (Exception e) {
             Log.d("FlutterOverlayWindowPlugin", "Failed querying MIUI PowerKeeper provider", e);
