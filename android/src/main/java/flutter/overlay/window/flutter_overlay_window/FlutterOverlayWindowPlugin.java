@@ -507,7 +507,7 @@ public class FlutterOverlayWindowPlugin implements
         } catch (Exception e) {
             Log.e("FlutterOverlayWindowPlugin", "Error checking app foreground state: " + e.getMessage());
         }
-        return null;
+        return false;
     }
 
    @Override
