@@ -29,6 +29,7 @@ import androidx.core.app.NotificationManagerCompat;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.media.AudioAttributes;
+import android.app.usage.UsageStatsManager;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -318,6 +319,9 @@ public class FlutterOverlayWindowPlugin implements
             return;
         } else if (call.method.equals("isSystemBatterySaverOn")) {
             result.success(isSystemBatterySaverOn());
+            return;
+        } else if (call.method.equals("isAppBatterySaverOn")) {
+            result.success(isAppBatterySaverOn());
             return;
         } else if (call.method.equals("closeOverlay")) {
            try {
@@ -738,6 +742,98 @@ public class FlutterOverlayWindowPlugin implements
         }
 
         return false;
+    }
+
+    /**
+     * Returns true when the current app is still subject to battery optimizations /
+     * power saving modes. On Xiaomi / HyperOS devices we try to detect the per-app
+     * "battery saver" profile; otherwise we fall back to standard Doze detection.
+     */
+    private boolean isAppBatterySaverOn() {
+        if (isXiaomiBasedRom()) {
+            Boolean miuiState = resolveMiuiBatterySaverState();
+            if (miuiState != null) {
+                return miuiState;
+            }
+        }
+        return isDefaultBatteryOptimizationEnabled();
+    }
+
+    /**
+     * Standard Android check using Doze battery optimizations API.
+     */
+    private boolean isDefaultBatteryOptimizationEnabled() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return false;
+        }
+        try {
+            PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            if (powerManager == null) {
+                return false;
+            }
+            boolean isIgnoring = powerManager.isIgnoringBatteryOptimizations(context.getPackageName());
+            return !isIgnoring;
+        } catch (Exception e) {
+            Log.w("FlutterOverlayWindowPlugin", "Unable to read Doze optimization flag", e);
+            return false;
+        }
+    }
+
+    /**
+     * Reads Xiaomi / HyperOS specific battery saver state for this package.
+     * Returns null when the value cannot be determined so callers can fall back.
+     */
+    @Nullable
+    private Boolean resolveMiuiBatterySaverState() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return null;
+        }
+        try {
+            AppOpsManager appOpsManager = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
+            if (appOpsManager == null) {
+                return null;
+            }
+            int uid = context.getApplicationInfo().uid;
+            String pkg = context.getPackageName();
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                int runAny = appOpsManager.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_RUN_ANY_IN_BACKGROUND, uid, pkg);
+                if (isOpRestricted(runAny)) {
+                    return true;
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                int runInBackground = appOpsManager.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_RUN_IN_BACKGROUND, uid, pkg);
+                if (isOpRestricted(runInBackground)) {
+                    return true;
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                UsageStatsManager usageStatsManager = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
+                if (usageStatsManager != null) {
+                    int bucket = usageStatsManager.getAppStandbyBucket();
+                    if (bucket == UsageStatsManager.STANDBY_BUCKET_RARE
+                            || bucket == UsageStatsManager.STANDBY_BUCKET_RESTRICTED
+                            || bucket == UsageStatsManager.STANDBY_BUCKET_NEVER) {
+                        return true;
+                    }
+                }
+            }
+        } catch (SecurityException se) {
+            Log.w("FlutterOverlayWindowPlugin", "UsageStats permission missing; MIUI saver status unknown", se);
+            return null;
+        } catch (Exception e) {
+            Log.w("FlutterOverlayWindowPlugin", "Unable to resolve MIUI battery saver flag", e);
+            return null;
+        }
+        return false;
+    }
+
+    private boolean isOpRestricted(int mode) {
+        return mode == AppOpsManager.MODE_IGNORED
+                || mode == AppOpsManager.MODE_ERRORED;
     }
 
     private boolean isXiaomiBasedRom() {
