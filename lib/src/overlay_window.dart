@@ -259,6 +259,18 @@ class FlutterOverlayWindow {
     }
   }
 
+  /// Clears the cached MIUI/HyperOS battery saver detection so the next
+  /// `isAppBatterySaverOn` call re-evaluates from scratch.
+  static Future<bool> clearAppBatterySaverCache() async {
+    try {
+      return await _channel.invokeMethod<bool>('clearAppBatterySaverCache') ??
+          false;
+    } on PlatformException catch (error) {
+      log("Error clearAppBatterySaverCache: $error");
+      return false;
+    }
+  }
+
   /// Opens the OEM battery optimization screen focused on this app when possible.
   /// Falls back to standard battery-related settings if a vendor panel isn't available.
   static Future<bool> openAppBatterySaverSettings() async {
