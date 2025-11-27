@@ -56,6 +56,10 @@ public class FlutterOverlayWindowPlugin implements
         FlutterPlugin, ActivityAware, BasicMessageChannel.MessageHandler, MethodCallHandler,
         PluginRegistry.ActivityResultListener {
 
+    private static final String OPSTR_RUN_ANY_IN_BACKGROUND = "android:run_any_in_background";
+    private static final String OPSTR_RUN_IN_BACKGROUND = "android:run_in_background";
+    private static final int STANDBY_BUCKET_NEVER = 50;
+
     private MethodChannel channel;
     private Context context;
     private Activity mActivity;
@@ -797,14 +801,14 @@ public class FlutterOverlayWindowPlugin implements
             String pkg = context.getPackageName();
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                int runAny = appOpsManager.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_RUN_ANY_IN_BACKGROUND, uid, pkg);
+                int runAny = appOpsManager.unsafeCheckOpNoThrow(OPSTR_RUN_ANY_IN_BACKGROUND, uid, pkg);
                 if (isOpRestricted(runAny)) {
                     return true;
                 }
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                int runInBackground = appOpsManager.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_RUN_IN_BACKGROUND, uid, pkg);
+                int runInBackground = appOpsManager.unsafeCheckOpNoThrow(OPSTR_RUN_IN_BACKGROUND, uid, pkg);
                 if (isOpRestricted(runInBackground)) {
                     return true;
                 }
@@ -816,7 +820,7 @@ public class FlutterOverlayWindowPlugin implements
                     int bucket = usageStatsManager.getAppStandbyBucket();
                     if (bucket == UsageStatsManager.STANDBY_BUCKET_RARE
                             || bucket == UsageStatsManager.STANDBY_BUCKET_RESTRICTED
-                            || bucket == UsageStatsManager.STANDBY_BUCKET_NEVER) {
+                            || bucket == STANDBY_BUCKET_NEVER) {
                         return true;
                     }
                 }
