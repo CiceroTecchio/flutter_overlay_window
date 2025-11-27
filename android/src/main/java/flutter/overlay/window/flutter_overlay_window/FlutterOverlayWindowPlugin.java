@@ -2,25 +2,28 @@ package flutter.overlay.window.flutter_overlay_window;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.ActivityManager;
+import android.app.AppOpsManager;
+import android.app.KeyguardManager;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.database.Cursor;
+import android.media.AudioAttributes;
 import android.net.Uri;
+import android.os.Binder;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 import android.view.WindowManager;
-import android.os.PowerManager;
-import android.app.KeyguardManager;
-import androidx.core.content.ContextCompat;
-import android.os.Handler;
-import android.content.BroadcastReceiver;
-import android.os.Looper;
-import android.content.IntentFilter;
-import android.app.AppOpsManager;
-import android.os.Binder;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -815,6 +818,18 @@ public class FlutterOverlayWindowPlugin implements
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                ActivityManager activityManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+                if (activityManager != null && activityManager.isBackgroundRestricted()) {
+                    return true;
+                }
+            }
+
+            Boolean providerState = queryMiuiPowerKeeperProvider();
+            if (providerState != null) {
+                return providerState;
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 UsageStatsManager usageStatsManager = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
                 if (usageStatsManager != null) {
                     int bucket = usageStatsManager.getAppStandbyBucket();
@@ -833,6 +848,86 @@ public class FlutterOverlayWindowPlugin implements
             return null;
         }
         return false;
+    }
+
+    @Nullable
+    private Boolean queryMiuiPowerKeeperProvider() {
+        Cursor cursor = null;
+        try {
+            Uri uri = Uri.parse("content://com.miui.powerkeeper.configure/PowerSaveConfig");
+            String pkg = context.getPackageName();
+            cursor = context.getContentResolver().query(uri, null, "pkgName=?", new String[]{pkg}, null);
+            if ((cursor == null || !cursor.moveToFirst())) {
+                if (cursor != null) cursor.close();
+                cursor = context.getContentResolver().query(uri, null, "packageName=?", new String[]{pkg}, null);
+            }
+            if (cursor == null || !cursor.moveToFirst()) {
+                return null;
+            }
+
+            String rawValue = firstNonNull(cursor,
+                    "configValue",
+                    "value",
+                    "intValue",
+                    "powerMode",
+                    "mode");
+
+            if (rawValue == null) {
+                return null;
+            }
+
+            String normalized = rawValue.trim().toLowerCase(Locale.US);
+            if (normalized.isEmpty()) {
+                return null;
+            }
+
+            if ("0".equals(normalized)
+                    || normalized.contains("normal")
+                    || normalized.contains("unrestrict")
+                    || normalized.contains("no_limit")
+                    || normalized.contains("standard")) {
+                return false;
+            }
+
+            if ("1".equals(normalized)
+                    || "2".equals(normalized)
+                    || normalized.contains("save")
+                    || normalized.contains("restrict")
+                    || normalized.contains("strict")
+                    || normalized.contains("limit")) {
+                return true;
+            }
+        } catch (SecurityException se) {
+            Log.d("FlutterOverlayWindowPlugin", "MIUI PowerKeeper provider not accessible", se);
+            return null;
+        } catch (Exception e) {
+            Log.d("FlutterOverlayWindowPlugin", "Failed querying MIUI PowerKeeper provider", e);
+            return null;
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private String firstNonNull(Cursor cursor, String... columns) {
+        for (String column : columns) {
+            if (column == null) continue;
+            int index = cursor.getColumnIndex(column);
+            if (index >= 0) {
+                try {
+                    String value = cursor.getString(index);
+                    if (value != null) {
+                        return value;
+                    }
+                } catch (Exception ignored) {
+                    // Ignore invalid column read attempts
+                }
+            }
+        }
+        return null;
     }
 
     private boolean isOpRestricted(int mode) {
