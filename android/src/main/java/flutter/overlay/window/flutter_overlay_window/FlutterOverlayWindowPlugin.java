@@ -12,6 +12,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.media.AudioAttributes;
 import android.net.Uri;
@@ -66,6 +67,11 @@ public class FlutterOverlayWindowPlugin implements
 
     private static final long MIUI_PROVIDER_RETRY_WINDOW_MS = 10 * 60 * 1000L; // 10 min
     private static final long WAKE_LOCK_LOG_THROTTLE_MS = 15 * 1000L; // 15 seconds
+    private static final long MIUI_RESTRICTION_CACHE_TTL_MS = 6 * 60 * 60 * 1000L; // 6 hours
+    private static final String PREFS_NAME = "flutter_overlay_window";
+    private static final String PREF_MIUI_BATTERY_SAVER_ACTIVE = "pref_miui_battery_saver_active";
+    private static final String PREF_MIUI_BATTERY_SAVER_TS = "pref_miui_battery_saver_ts";
+    private static final String PREF_MIUI_BATTERY_SAVER_REASON = "pref_miui_battery_saver_reason";
 
     private static long lastWakeLockRestrictionLogTs = 0L;
     private static boolean wakeLockRestrictionLogged = false;
@@ -336,6 +342,10 @@ public class FlutterOverlayWindowPlugin implements
             return;
         } else if (call.method.equals("isAppBatterySaverOn")) {
             result.success(isAppBatterySaverOn());
+            return;
+        } else if (call.method.equals("clearAppBatterySaverCache")) {
+            clearPersistedMiuiRestriction();
+            result.success(true);
             return;
         } else if (call.method.equals("openAppBatterySaverSettings")) {
             result.success(openAppBatterySaverSettings());
@@ -839,22 +849,35 @@ public class FlutterOverlayWindowPlugin implements
      * "battery saver" profile; otherwise we fall back to standard Doze detection.
      */
     private boolean isAppBatterySaverOn() {
+        boolean cachedMiuiRestriction = hasCachedMiuiRestriction();
+
         if (isXiaomiBasedRom()) {
             Boolean miuiState = resolveMiuiBatterySaverState();
             if (miuiState != null) {
-                if (!miuiState) {
-                    resetWakeLockRestrictionLog();
+                if (miuiState) {
+                    persistMiuiRestrictionState(true, "miui.signal");
+                    logWakeLockRestriction("miui.signal");
+                    return true;
+                } else if (cachedMiuiRestriction) {
+                    logWakeLockRestriction("cached.miui");
+                    return true;
                 }
-                return miuiState;
             }
         }
         if (OverlayService.wasWakeLockRestrictedRecently(context)) {
+            persistMiuiRestrictionState(true, "wake_lock.persisted");
             logWakeLockRestriction("persisted");
             return true;
         }
         if (OverlayService.isWakeLockRestrictedBySystem()) {
             String reason = OverlayService.getWakeLockRestrictionReason();
-            logWakeLockRestriction(reason != null ? reason : "unknown");
+            String source = reason != null ? reason : "wake_lock";
+            persistMiuiRestrictionState(true, source);
+            logWakeLockRestriction(source);
+            return true;
+        }
+        if (cachedMiuiRestriction) {
+            logWakeLockRestriction("cached.miui");
             return true;
         }
         resetWakeLockRestrictionLog();
@@ -1037,6 +1060,58 @@ public class FlutterOverlayWindowPlugin implements
     private boolean isOpRestricted(int mode) {
         return mode == AppOpsManager.MODE_IGNORED
                 || mode == AppOpsManager.MODE_ERRORED;
+    }
+
+    private boolean hasCachedMiuiRestriction() {
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            boolean active = prefs.getBoolean(PREF_MIUI_BATTERY_SAVER_ACTIVE, false);
+            if (!active) {
+                return false;
+            }
+            long ts = prefs.getLong(PREF_MIUI_BATTERY_SAVER_TS, 0L);
+            if (ts <= 0L) {
+                return false;
+            }
+            if ((System.currentTimeMillis() - ts) > MIUI_RESTRICTION_CACHE_TTL_MS) {
+                prefs.edit()
+                        .remove(PREF_MIUI_BATTERY_SAVER_ACTIVE)
+                        .remove(PREF_MIUI_BATTERY_SAVER_TS)
+                        .remove(PREF_MIUI_BATTERY_SAVER_REASON)
+                        .apply();
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            Log.w("FlutterOverlayWindowPlugin", "Unable to read MIUI restriction cache: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private void persistMiuiRestrictionState(boolean active, @Nullable String source) {
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            SharedPreferences.Editor editor = prefs.edit();
+            if (active) {
+                editor.putBoolean(PREF_MIUI_BATTERY_SAVER_ACTIVE, true);
+                editor.putLong(PREF_MIUI_BATTERY_SAVER_TS, System.currentTimeMillis());
+                if (source != null) {
+                    editor.putString(PREF_MIUI_BATTERY_SAVER_REASON, source);
+                }
+            } else {
+                editor.remove(PREF_MIUI_BATTERY_SAVER_ACTIVE);
+                editor.remove(PREF_MIUI_BATTERY_SAVER_TS);
+                editor.remove(PREF_MIUI_BATTERY_SAVER_REASON);
+            }
+            editor.apply();
+        } catch (Exception e) {
+            Log.w("FlutterOverlayWindowPlugin", "Unable to persist MIUI restriction state: " + e.getMessage());
+        }
+    }
+
+    private void clearPersistedMiuiRestriction() {
+        persistMiuiRestrictionState(false, null);
+        resetWakeLockRestrictionLog();
     }
 
     private void logWakeLockRestriction(String source) {
