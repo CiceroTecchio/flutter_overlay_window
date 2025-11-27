@@ -7,6 +7,7 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.content.pm.ServiceInfo;
@@ -21,8 +22,8 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
-import android.os.SystemClock;
 import android.os.PowerManager.WakeLock;
+import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -42,6 +43,7 @@ import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -106,10 +108,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private WakeLock wakeLock;
     private static final long WAKE_LOCK_FAILURE_WINDOW_MS = 10000L;
     private static final int WAKE_LOCK_FAILURE_THRESHOLD = 3;
+    private static final long WAKE_LOCK_RESTRICTION_PERSIST_MS = 15 * 60 * 1000L; // 15 minutos
+    private static final long WAKE_LOCK_RESTRICTION_LOG_WINDOW_MS = 5000L;
+    private static final String PREFS_NAME = "flutter_overlay_window";
+    private static final String PREF_WAKE_LOCK_TS = "wake_lock_restriction_ts";
+    private static final String PREF_WAKE_LOCK_REASON = "wake_lock_restriction_reason";
     private static volatile long lastWakeLockStableTimestamp = 0L;
     private static volatile long lastWakeLockFailureTimestamp = 0L;
     private static volatile int wakeLockFailureCount = 0;
     private static volatile boolean wakeLockRestrictedBySystem = false;
+    private static volatile long wakeLockRestrictionDetectedAt = 0L;
+    private static volatile String wakeLockRestrictionReason = null;
     private static volatile long lastWakeLockWarningTimestamp = 0L;
 
     private BroadcastReceiver screenReceiver = new BroadcastReceiver() {
@@ -1744,6 +1753,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     private void ensureWakeLock() {
         try {
+            if (!isRunning) {
+                return;
+            }
             if (wakeLock == null || !wakeLock.isHeld()) {
                 long now = SystemClock.elapsedRealtime();
                 if (lastWakeLockStableTimestamp > 0 && (now - lastWakeLockStableTimestamp) < WAKE_LOCK_FAILURE_WINDOW_MS) {
@@ -1752,11 +1764,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     wakeLockFailureCount = 1;
                 }
                 lastWakeLockFailureTimestamp = now;
-                if (wakeLockFailureCount >= WAKE_LOCK_FAILURE_THRESHOLD) {
-                    wakeLockRestrictedBySystem = true;
+
+                boolean likelyMiui = isDeviceLikelyXiaomi();
+                if (wakeLockFailureCount >= WAKE_LOCK_FAILURE_THRESHOLD || (likelyMiui && wakeLockFailureCount >= 1)) {
+                    markWakeLockRestriction(likelyMiui ? "miui.forced_release" : "system.restricted_wakelock");
                 }
 
-                if (now - lastWakeLockWarningTimestamp > 10000L) {
+                if (now - lastWakeLockWarningTimestamp > WAKE_LOCK_RESTRICTION_LOG_WINDOW_MS) {
                     Log.w("OverlayService", "⚠️ WakeLock não está ativo, re-adquirindo...");
                     lastWakeLockWarningTimestamp = now;
                 } else {
@@ -1766,7 +1780,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 acquireWakeLock();
             }
         } catch (SecurityException se) {
-            wakeLockRestrictedBySystem = true;
+            markWakeLockRestriction("security_exception");
             Log.e("OverlayService", "❌ Permissão de WakeLock negada pelo sistema", se);
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Erro ao verificar WakeLock: " + e.getMessage(), e);
@@ -1790,18 +1804,79 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
+    private void markWakeLockRestriction(String reason) {
+        if (!isRunning) {
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
+        if (wakeLockRestrictedBySystem && (now - wakeLockRestrictionDetectedAt) < 2000L) {
+            return;
+        }
+        wakeLockRestrictedBySystem = true;
+        wakeLockRestrictionDetectedAt = now;
+        wakeLockRestrictionReason = reason;
+        persistWakeLockRestriction(reason);
+    }
+
+    private void persistWakeLockRestriction(String reason) {
+        try {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            prefs.edit()
+                    .putLong(PREF_WAKE_LOCK_TS, System.currentTimeMillis())
+                    .putString(PREF_WAKE_LOCK_REASON, reason)
+                    .apply();
+        } catch (Exception e) {
+            Log.w("OverlayService", "⚠️ Unable to persist wake lock restriction state: " + e.getMessage());
+        }
+    }
+
+    public static boolean wasWakeLockRestrictedRecently(Context context) {
+        if (context == null) {
+            return false;
+        }
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            long ts = prefs.getLong(PREF_WAKE_LOCK_TS, 0L);
+            if (ts <= 0) {
+                return false;
+            }
+            return (System.currentTimeMillis() - ts) < WAKE_LOCK_RESTRICTION_PERSIST_MS;
+        } catch (Exception e) {
+            Log.w("OverlayService", "⚠️ Unable to read wake lock restriction cache: " + e.getMessage());
+            return false;
+        }
+    }
+
     public static boolean isWakeLockRestrictedBySystem() {
         if (!wakeLockRestrictedBySystem) {
             return false;
         }
         long now = SystemClock.elapsedRealtime();
-        // Se passaram muitos segundos desde o último problema, considerar estabilizado
-        if (now - lastWakeLockFailureTimestamp > (WAKE_LOCK_FAILURE_WINDOW_MS * 3)) {
+        if (now - wakeLockRestrictionDetectedAt > WAKE_LOCK_RESTRICTION_PERSIST_MS) {
             wakeLockRestrictedBySystem = false;
+            wakeLockRestrictionReason = null;
             wakeLockFailureCount = 0;
             return false;
         }
         return true;
     }
 
+    public static String getWakeLockRestrictionReason() {
+        return wakeLockRestrictionReason;
+    }
+
+    private static boolean isDeviceLikelyXiaomi() {
+        try {
+            String manufacturer = Build.MANUFACTURER != null ? Build.MANUFACTURER.toLowerCase(Locale.US) : "";
+            String brand = Build.BRAND != null ? Build.BRAND.toLowerCase(Locale.US) : "";
+            return manufacturer.contains("xiaomi")
+                    || manufacturer.contains("redmi")
+                    || manufacturer.contains("poco")
+                    || brand.contains("xiaomi")
+                    || brand.contains("redmi")
+                    || brand.contains("poco");
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }

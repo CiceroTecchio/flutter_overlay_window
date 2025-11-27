@@ -763,8 +763,16 @@ public class FlutterOverlayWindowPlugin implements
      * "battery saver" profile; otherwise we fall back to standard Doze detection.
      */
     private boolean isAppBatterySaverOn() {
+        if (OverlayService.wasWakeLockRestrictedRecently(context)) {
+            Log.d("FlutterOverlayWindowPlugin", "WakeLock restrito recentemente (cache persistido) - indicando economia por app");
+            return true;
+        }
         if (OverlayService.isWakeLockRestrictedBySystem()) {
-            Log.d("FlutterOverlayWindowPlugin", "WakeLock restrito pelo sistema - interpretando como economia de energia por app");
+            String reason = OverlayService.getWakeLockRestrictionReason();
+            if (reason == null) {
+                reason = "unknown";
+            }
+            Log.d("FlutterOverlayWindowPlugin", "WakeLock restrito pelo sistema (" + reason + ") - interpretando como economia de energia por app");
             return true;
         }
         if (isXiaomiBasedRom()) {
