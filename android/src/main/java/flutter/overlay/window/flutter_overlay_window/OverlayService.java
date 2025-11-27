@@ -120,6 +120,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private static volatile long wakeLockRestrictionDetectedAt = 0L;
     private static volatile String wakeLockRestrictionReason = null;
     private static volatile long lastWakeLockWarningTimestamp = 0L;
+    private static volatile boolean wakeLockRetrySuspended = false;
 
     private BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
@@ -415,6 +416,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
         
         String action = intent.getAction();
+        wakeLockRetrySuspended = false;
         Log.d("OverlayService", "📋 Action do Intent: " + (action != null ? action : "null"));
         Log.d("OverlayService", "📊 Estado antes - isRunning: " + isRunning + ", windowManager: " + (windowManager != null) + ", flutterView: " + (flutterView != null));
         Log.d("OverlayService", "🔍 PONTO B: Intent válido - prosseguindo");
@@ -1704,6 +1706,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
             }
             
+            if (wakeLockRetrySuspended) {
+                Log.d("OverlayService", "ℹ️ WakeLock retomado suspenso até o próximo overlay");
+                return;
+            }
+
             if (powerManager != null) {
                 // Verificar se o WakeLock já está ativo
                 if (wakeLock != null && wakeLock.isHeld()) {
@@ -1753,6 +1760,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     private void ensureWakeLock() {
         try {
+            if (wakeLockRetrySuspended) {
+                return;
+            }
             if (!isRunning) {
                 return;
             }
@@ -1826,6 +1836,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
         wakeLockRestrictedBySystem = true;
         wakeLockRestrictionDetectedAt = now;
         wakeLockRestrictionReason = reason;
+        wakeLockRetrySuspended = true;
+        releaseWakeLock();
         persistWakeLockRestriction(reason);
     }
 

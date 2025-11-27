@@ -65,6 +65,10 @@ public class FlutterOverlayWindowPlugin implements
     private static final int STANDBY_BUCKET_NEVER = 50;
 
     private static final long MIUI_PROVIDER_RETRY_WINDOW_MS = 10 * 60 * 1000L; // 10 min
+    private static final long WAKE_LOCK_LOG_THROTTLE_MS = 15 * 1000L; // 15 seconds
+
+    private static long lastWakeLockRestrictionLogTs = 0L;
+    private static boolean wakeLockRestrictionLogged = false;
 
     private MethodChannel channel;
     private Context context;
@@ -835,24 +839,25 @@ public class FlutterOverlayWindowPlugin implements
      * "battery saver" profile; otherwise we fall back to standard Doze detection.
      */
     private boolean isAppBatterySaverOn() {
+        if (isXiaomiBasedRom()) {
+            Boolean miuiState = resolveMiuiBatterySaverState();
+            if (miuiState != null) {
+                if (!miuiState) {
+                    resetWakeLockRestrictionLog();
+                }
+                return miuiState;
+            }
+        }
         if (OverlayService.wasWakeLockRestrictedRecently(context)) {
-            Log.d("FlutterOverlayWindowPlugin", "WakeLock restrito recentemente (cache persistido) - indicando economia por app");
+            logWakeLockRestriction("persisted");
             return true;
         }
         if (OverlayService.isWakeLockRestrictedBySystem()) {
             String reason = OverlayService.getWakeLockRestrictionReason();
-            if (reason == null) {
-                reason = "unknown";
-            }
-            Log.d("FlutterOverlayWindowPlugin", "WakeLock restrito pelo sistema (" + reason + ") - interpretando como economia de energia por app");
+            logWakeLockRestriction(reason != null ? reason : "unknown");
             return true;
         }
-        if (isXiaomiBasedRom()) {
-            Boolean miuiState = resolveMiuiBatterySaverState();
-            if (miuiState != null) {
-                return miuiState;
-            }
-        }
+        resetWakeLockRestrictionLog();
         return isDefaultBatteryOptimizationEnabled();
     }
 
@@ -1032,6 +1037,19 @@ public class FlutterOverlayWindowPlugin implements
     private boolean isOpRestricted(int mode) {
         return mode == AppOpsManager.MODE_IGNORED
                 || mode == AppOpsManager.MODE_ERRORED;
+    }
+
+    private void logWakeLockRestriction(String source) {
+        long now = SystemClock.elapsedRealtime();
+        if (!wakeLockRestrictionLogged || (now - lastWakeLockRestrictionLogTs) > WAKE_LOCK_LOG_THROTTLE_MS) {
+            Log.d("FlutterOverlayWindowPlugin", "WakeLock restrito (" + source + ") - interpretando como economia de energia por app");
+            wakeLockRestrictionLogged = true;
+            lastWakeLockRestrictionLogTs = now;
+        }
+    }
+
+    private void resetWakeLockRestrictionLog() {
+        wakeLockRestrictionLogged = false;
     }
 
     private boolean isXiaomiBasedRom() {
