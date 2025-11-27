@@ -247,27 +247,4 @@ class FlutterOverlayWindow {
       return false;
     }
   }
-
-  /// Returns true when the app is still under battery optimizations (Doze) or,
-  /// on MIUI/HyperOS, when the per-app power saver profile restricts it.
-  static Future<bool> isAppBatterySaverOn() async {
-    try {
-      return await _channel.invokeMethod<bool>('isAppBatterySaverOn') ?? false;
-    } on PlatformException catch (error) {
-      log("Error isAppBatterySaverOn: $error");
-      return false;
-    }
-  }
-
-  /// Opens the OEM battery optimization screen focused on this app when possible.
-  /// Falls back to standard battery-related settings if a vendor panel isn't available.
-  static Future<bool> openAppBatterySaverSettings() async {
-    try {
-      return await _channel.invokeMethod<bool>('openAppBatterySaverSettings') ??
-          false;
-    } on PlatformException catch (error) {
-      log("Error openAppBatterySaverSettings: $error");
-      return false;
-    }
-  }
 }
