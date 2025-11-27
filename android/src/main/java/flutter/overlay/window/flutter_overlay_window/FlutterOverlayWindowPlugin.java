@@ -333,6 +333,9 @@ public class FlutterOverlayWindowPlugin implements
         } else if (call.method.equals("isAppBatterySaverOn")) {
             result.success(isAppBatterySaverOn());
             return;
+        } else if (call.method.equals("openAppBatterySaverSettings")) {
+            result.success(openAppBatterySaverSettings());
+            return;
         } else if (call.method.equals("closeOverlay")) {
            try {
                Log.d("FlutterOverlayWindowPlugin", "🔍 closeOverlay() - Iniciando fechamento");
@@ -504,7 +507,7 @@ public class FlutterOverlayWindowPlugin implements
         } catch (Exception e) {
             Log.e("FlutterOverlayWindowPlugin", "Error checking app foreground state: " + e.getMessage());
         }
-        return false;
+        return null;
     }
 
    @Override
@@ -698,6 +701,57 @@ public class FlutterOverlayWindowPlugin implements
     }
 
     /**
+     * Opens the manufacturer-specific battery settings page for this app when possible.
+     */
+    private boolean openAppBatterySaverSettings() {
+        List<Intent> intents = new ArrayList<>();
+        String packageName = context.getPackageName();
+
+        // MIUI / HyperOS specific panels
+        intents.add(componentIntentWithPackage("com.miui.powerkeeper", "com.miui.powerkeeper.ui.PowerManagerActivity"));
+        intents.add(componentIntentWithPackage("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsContainerManagementActivity"));
+        intents.add(componentIntentWithPackage("com.miui.securitycenter", "com.miui.powercenter.PowerSettings"));
+        intents.add(componentIntentWithPackage("com.miui.powerkeeper", "com.miui.powerkeeper.ui.battery.BatteryDetailActivity"));
+
+        // EMUI / Honor
+        intents.add(componentIntentWithPackage("com.huawei.systemmanager", "com.huawei.systemmanager.power.ui.HwPowerManagerActivity"));
+
+        // Samsung
+        intents.add(componentIntentWithPackage("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"));
+        intents.add(componentIntentWithPackage("com.samsung.android.sm", "com.samsung.android.sm.battery.ui.BatteryActivity"));
+
+        // Oppo / Realme / ColorOS
+        intents.add(componentIntentWithPackage("com.coloros.phonemanager", "com.coloros.powermanager.notification.PowerControlActivity"));
+        intents.add(componentIntentWithPackage("com.coloros.oppoguardelf", "com.coloros.powermanager.notification.PowerControlActivity"));
+
+        // Vivo
+        intents.add(componentIntentWithPackage("com.vivo.abe", "com.vivo.applicationbehaviorengine.ui.ExcessivePowerManagerActivity"));
+
+        // Stock Android fallbacks
+        Intent requestIgnore = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+        requestIgnore.setData(Uri.parse("package:" + packageName));
+        intents.add(requestIgnore);
+
+        Intent ignoreSettings = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+        intents.add(ignoreSettings);
+
+        Intent powerUsageSummary = new Intent("android.settings.BATTERY_SAVER_SETTINGS");
+        intents.add(powerUsageSummary);
+
+        for (Intent intent : intents) {
+            if (intent == null) continue;
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (launchIntent(intent)) {
+                return true;
+            }
+        }
+        Intent fallback = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        fallback.setData(Uri.fromParts("package", packageName, null));
+        fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return launchIntent(fallback);
+    }
+
+    /**
      * Safely launches an intent if an activity is available.
      */
     private boolean launchIntent(Intent intent) {
@@ -722,6 +776,24 @@ public class FlutterOverlayWindowPlugin implements
         Intent intent = new Intent();
         intent.setComponent(new ComponentName(pkg, cls));
         return intent;
+    }
+
+    private Intent componentIntentWithPackage(String pkg, String cls) {
+        Intent intent = componentIntent(pkg, cls);
+        attachAppPackageExtras(intent);
+        return intent;
+    }
+
+    private void attachAppPackageExtras(@Nullable Intent intent) {
+        if (intent == null) return;
+        String packageName = context.getPackageName();
+        intent.putExtra("package_name", packageName);
+        intent.putExtra("pkgname", packageName);
+        intent.putExtra("pkg_name", packageName);
+        intent.putExtra("pkg", packageName);
+        intent.putExtra("package", packageName);
+        intent.putExtra("extra_pkgname", packageName);
+        intent.putExtra("uid", context.getApplicationInfo().uid);
     }
 
     /**

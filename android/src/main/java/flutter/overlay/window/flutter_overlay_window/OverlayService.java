@@ -109,7 +109,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private static final long WAKE_LOCK_FAILURE_WINDOW_MS = 10000L;
     private static final int WAKE_LOCK_FAILURE_THRESHOLD = 3;
     private static final long WAKE_LOCK_RESTRICTION_PERSIST_MS = 15 * 60 * 1000L; // 15 minutos
-    private static final long WAKE_LOCK_RESTRICTION_LOG_WINDOW_MS = 5000L;
+    private static final long WAKE_LOCK_RESTRICTION_LOG_WINDOW_MS = 10000L;
     private static final String PREFS_NAME = "flutter_overlay_window";
     private static final String PREF_WAKE_LOCK_TS = "wake_lock_restriction_ts";
     private static final String PREF_WAKE_LOCK_REASON = "wake_lock_restriction_reason";
@@ -1758,6 +1758,17 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
             if (wakeLock == null || !wakeLock.isHeld()) {
                 long now = SystemClock.elapsedRealtime();
+
+                if (wakeLockRestrictedBySystem && (now - wakeLockRestrictionDetectedAt) < WAKE_LOCK_RESTRICTION_PERSIST_MS) {
+                    if (now - lastWakeLockWarningTimestamp > WAKE_LOCK_RESTRICTION_LOG_WINDOW_MS) {
+                    Log.d("OverlayService", "ℹ️ WakeLock ainda sendo derrubado pelo sistema, mantendo flag de restrição");
+                        lastWakeLockWarningTimestamp = now;
+                    }
+                    releaseWakeLock();
+                    acquireWakeLock();
+                    return;
+                }
+
                 if (lastWakeLockStableTimestamp > 0 && (now - lastWakeLockStableTimestamp) < WAKE_LOCK_FAILURE_WINDOW_MS) {
                     wakeLockFailureCount++;
                 } else {
@@ -1773,7 +1784,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 if (now - lastWakeLockWarningTimestamp > WAKE_LOCK_RESTRICTION_LOG_WINDOW_MS) {
                     Log.w("OverlayService", "⚠️ WakeLock não está ativo, re-adquirindo...");
                     lastWakeLockWarningTimestamp = now;
-                } else {
+                } else if (!wakeLockRestrictedBySystem) {
                     Log.d("OverlayService", "ℹ️ Re-adquirindo WakeLock (controle MIUI)");
                 }
                 releaseWakeLock();
