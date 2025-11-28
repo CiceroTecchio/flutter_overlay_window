@@ -1141,12 +1141,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
         boolean startedForeground = false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             try {
-                startForeground(OverlayConstants.NOTIFICATION_ID, notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MANIFEST);
+                // ✅ Combinar specialUse e location para permitir rastreamento em background
+                int serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE | 
+                                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+                
+                startForeground(OverlayConstants.NOTIFICATION_ID, notification, serviceType);
                 startedForeground = true;
-                Log.d("OverlayService", "✅ startForeground() invoked with MANIFEST type");
+                Log.d("OverlayService", "✅ startForeground() invoked with SPECIAL_USE|LOCATION type");
             } catch (SecurityException se) {
-                Log.w("OverlayService", "⚠️ startForeground with MANIFEST type rejected, retrying without explicit type", se);
+                Log.w("OverlayService", "⚠️ startForeground with SPECIAL_USE|LOCATION type rejected, retrying without explicit type", se);
                 try {
                     startForeground(OverlayConstants.NOTIFICATION_ID, notification);
                     startedForeground = true;
@@ -1155,7 +1158,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     Log.e("OverlayService", "❌ Fallback startForeground() without type failed", inner);
                 }
             } catch (Exception e) {
-                Log.e("OverlayService", "❌ Failed to start foreground service with MANIFEST type", e);
+                Log.e("OverlayService", "❌ Failed to start foreground service with SPECIAL_USE|LOCATION type", e);
                 try {
                     startForeground(OverlayConstants.NOTIFICATION_ID, notification);
                     startedForeground = true;
