@@ -1,6 +1,5 @@
 package flutter.overlay.window.flutter_overlay_window;
 
-import android.Manifest;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AppOpsManager;
@@ -469,15 +468,9 @@ public class FlutterOverlayWindowPlugin implements
             boolean hasBasePermission = context.checkSelfPermission(
                 "android.permission.FOREGROUND_SERVICE") ==
                 android.content.pm.PackageManager.PERMISSION_GRANTED;
-            boolean hasLocationPermission = true;
-            if (Build.VERSION.SDK_INT >= 34) {
-                hasLocationPermission = context.checkSelfPermission(
-                    Manifest.permission.FOREGROUND_SERVICE_LOCATION) ==
-                    android.content.pm.PackageManager.PERMISSION_GRANTED;
-            }
 
-            Log.d("FlutterOverlayWindowPlugin", "🔐 Permission check - FOREGROUND_SERVICE: " + hasBasePermission + ", FOREGROUND_SERVICE_LOCATION: " + hasLocationPermission);
-            return hasBasePermission && hasLocationPermission;
+            Log.d("FlutterOverlayWindowPlugin", "🔐 Permission check - FOREGROUND_SERVICE: " + hasBasePermission);
+            return hasBasePermission;
         }
         return true; // For older versions, assume permission is granted
     }

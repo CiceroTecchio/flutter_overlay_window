@@ -1,6 +1,5 @@
 package flutter.overlay.window.flutter_overlay_window;
 
-import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -957,16 +956,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
             boolean hasBasePermission = getApplicationContext().checkSelfPermission(
                 "android.permission.FOREGROUND_SERVICE") == 
                 android.content.pm.PackageManager.PERMISSION_GRANTED;
-            boolean hasLocationPermission = true;
-            if (Build.VERSION.SDK_INT >= 34) {
-                hasLocationPermission = getApplicationContext().checkSelfPermission(
-                    Manifest.permission.FOREGROUND_SERVICE_LOCATION) ==
-                    android.content.pm.PackageManager.PERMISSION_GRANTED;
-            }
             
-            Log.d("OverlayService", "🔐 Permission check - FOREGROUND_SERVICE: " + hasBasePermission + ", FOREGROUND_SERVICE_LOCATION: " + hasLocationPermission);
+            Log.d("OverlayService", "🔐 Permission check - FOREGROUND_SERVICE: " + hasBasePermission);
             
-            return hasBasePermission && hasLocationPermission;
+            return hasBasePermission;
         }
         return true; // For older versions, assume permission is granted
     }
@@ -1141,15 +1134,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
         boolean startedForeground = false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             try {
-                // ✅ Combinar specialUse e location para permitir rastreamento em background
-                int serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE | 
-                                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+                // ✅ Usar apenas o tipo SPECIAL_USE para manter o overlay ativo em segundo plano
+                int serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
                 
                 startForeground(OverlayConstants.NOTIFICATION_ID, notification, serviceType);
                 startedForeground = true;
-                Log.d("OverlayService", "✅ startForeground() invoked with SPECIAL_USE|LOCATION type");
+                Log.d("OverlayService", "✅ startForeground() invoked with SPECIAL_USE type");
             } catch (SecurityException se) {
-                Log.w("OverlayService", "⚠️ startForeground with SPECIAL_USE|LOCATION type rejected, retrying without explicit type", se);
+                Log.w("OverlayService", "⚠️ startForeground with SPECIAL_USE type rejected, retrying without explicit type", se);
                 try {
                     startForeground(OverlayConstants.NOTIFICATION_ID, notification);
                     startedForeground = true;
@@ -1158,7 +1150,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     Log.e("OverlayService", "❌ Fallback startForeground() without type failed", inner);
                 }
             } catch (Exception e) {
-                Log.e("OverlayService", "❌ Failed to start foreground service with SPECIAL_USE|LOCATION type", e);
+                Log.e("OverlayService", "❌ Failed to start foreground service with SPECIAL_USE type", e);
                 try {
                     startForeground(OverlayConstants.NOTIFICATION_ID, notification);
                     startedForeground = true;
@@ -1732,10 +1724,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 }
                 
                 // PARTIAL_WAKE_LOCK mantém o CPU ativo mesmo com tela bloqueada/desligada
-                // Isso permite que o serviço continue enviando localização em background
+                // Isso mantém o overlay confiável mesmo em segundo plano
                 wakeLock = powerManager.newWakeLock(
                     PowerManager.PARTIAL_WAKE_LOCK,
-                    "FlutterOverlayWindow::LocationWakeLock"
+                    "FlutterOverlayWindow::OverlayWakeLock"
                 );
                 wakeLock.setReferenceCounted(false);
                 
