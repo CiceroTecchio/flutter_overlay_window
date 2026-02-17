@@ -394,11 +394,18 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
         
         Log.i("OverlayService", "✅ OverlayService destruído com sucesso");
-        
+
         // Notificar que o service foi realmente destruído
         Intent destroyedIntent = new Intent("flutter.overlay.window.OVERLAY_SERVICE_DESTROYED");
         destroyedIntent.setPackage(getPackageName());
         sendBroadcast(destroyedIntent);
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        Log.i("OverlayService", "📱 onTaskRemoved - App removido dos recentes, mantendo overlay ativo");
+        // Não chamar super.onTaskRemoved() - manter o serviço rodando
+        // O START_STICKY já garante que o serviço será reiniciado se necessário
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
@@ -497,6 +504,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 flutterView.detachFromFlutterEngine();
                 windowManager = null;
                 flutterView = null;
+                cachedLayoutParams = null; // ✅ Limpar cache de LayoutParams ao recriar overlay
                 // NÃO chamar stopSelf() aqui - apenas limpar e continuar
                 Log.d("OverlayService", "🧹 Overlay anterior removido, continuando com novo");
         }
@@ -776,10 +784,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 // ✅ Thread Synchronization with Accessibility Support
                 new Handler(Looper.getMainLooper()).post(() -> {
                     try {
-                        // ✅ Wait for accessibility operations to complete
-                        if (isAccessibilityActive()) {
-                            Thread.sleep(100); // Give accessibility time to complete
-                        }
+                        // ✅ Verificação de accessibility (sem sleep na main thread)
                         
                         windowManager.updateViewLayout(flutterView, params);
                         if (result != null) result.success(true);
@@ -814,16 +819,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 
                 WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
                 params.width = (width == -1999 || width == -1) ? -1 : dpToPx(width);
-                params.height = (height != 1999 || height != -1) ? dpToPx(height) : height;
+                params.height = (height == -1999 || height == -1) ? -1 : dpToPx(height);
                 WindowSetup.enableDrag = enableDrag;
                 
                 // ✅ Thread Synchronization with Accessibility Support
                 new Handler(Looper.getMainLooper()).post(() -> {
                     try {
-                        // ✅ Wait for accessibility operations to complete
-                        if (isAccessibilityActive()) {
-                            Thread.sleep(100); // Give accessibility time to complete
-                        }
+                        // ✅ Verificação de accessibility (sem sleep na main thread)
                         
                         windowManager.updateViewLayout(flutterView, params);
                         if (result != null) result.success(true);
@@ -863,11 +865,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
                     // ✅ Thread Synchronization with Accessibility Support
                     new Handler(Looper.getMainLooper()).post(() -> {
                         try {
-                            // ✅ Wait for accessibility operations to complete
-                            if (instance.isAccessibilityActive()) {
-                                Thread.sleep(100); // Give accessibility time to complete
-                            }
-                            
+                            // ✅ Verificação de accessibility (sem sleep na main thread)
                             instance.windowManager.updateViewLayout(instance.flutterView, params);
                             if (result != null) result.success(true);
                         } catch (Exception e) {
@@ -1126,7 +1124,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         notification.flags |= Notification.FLAG_NO_CLEAR; // Não pode ser limpa pelo usuário
         notification.flags |= Notification.FLAG_ONGOING_EVENT; // Evento em andamento
         notification.flags |= Notification.FLAG_FOREGROUND_SERVICE; // Serviço em primeiro plano
-        notification.flags |= Notification.FLAG_INSISTENT; // ✅ Insistente - não pode ser removida
+        // FLAG_INSISTENT removido - pode causar comportamento indesejado em ROMs como MIUI/Realme
 
         boolean hasPermission = hasForegroundServicePermission();
         Log.d("OverlayService", "🔐 Foreground service permission check: " + hasPermission);
@@ -1289,7 +1287,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             };
             
             notificationMonitorTimer = new Timer("NotificationMonitor", true);
-            notificationMonitorTimer.schedule(notificationMonitorTask, 5000, 2000); // Verificar a cada 2 segundos
+            notificationMonitorTimer.schedule(notificationMonitorTask, 10000, 30000); // Verificar a cada 30 segundos
             Log.d("OverlayService", "✅ Notification monitoring started");
             
         } catch (Exception e) {
@@ -1329,7 +1327,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             notification.flags |= Notification.FLAG_NO_CLEAR;
             notification.flags |= Notification.FLAG_ONGOING_EVENT;
             notification.flags |= Notification.FLAG_FOREGROUND_SERVICE;
-            notification.flags |= Notification.FLAG_INSISTENT;
+            // FLAG_INSISTENT removido - pode causar comportamento indesejado em ROMs como MIUI/Realme
             
             // Recriar a notificação
             startForeground(OverlayConstants.NOTIFICATION_ID, notification);
@@ -1445,9 +1443,6 @@ public class OverlayService extends Service implements View.OnTouchListener {
     // ✅ Safe Surface Validation with Accessibility
     private boolean isSurfaceValidWithAccessibility() {
         try {
-            // Wait a bit for accessibility operations to complete
-            Thread.sleep(50);
-
             if (flutterView == null) {
                 return false;
             }
@@ -1702,8 +1697,16 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
             
             if (wakeLockRetrySuspended) {
-                Log.d("OverlayService", "ℹ️ WakeLock retomado suspenso até o próximo overlay");
-                return;
+                long now = SystemClock.elapsedRealtime();
+                if ((now - wakeLockRestrictionDetectedAt) >= WAKE_LOCK_RESTRICTION_PERSIST_MS) {
+                    Log.i("OverlayService", "ℹ️ Período de restrição expirou, permitindo aquisição do WakeLock");
+                    wakeLockRetrySuspended = false;
+                    wakeLockRestrictedBySystem = false;
+                    wakeLockFailureCount = 0;
+                } else {
+                    Log.d("OverlayService", "ℹ️ WakeLock suspenso, aguardando período de restrição expirar");
+                    return;
+                }
             }
 
             if (powerManager != null) {
@@ -1755,11 +1758,20 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     private void ensureWakeLock() {
         try {
-            if (wakeLockRetrySuspended) {
-                return;
-            }
             if (!isRunning) {
                 return;
+            }
+            // Permitir re-tentativa após o período de restrição expirar
+            if (wakeLockRetrySuspended) {
+                long now = SystemClock.elapsedRealtime();
+                if ((now - wakeLockRestrictionDetectedAt) >= WAKE_LOCK_RESTRICTION_PERSIST_MS) {
+                    Log.i("OverlayService", "ℹ️ Período de restrição do WakeLock expirou, permitindo re-tentativa");
+                    wakeLockRetrySuspended = false;
+                    wakeLockRestrictedBySystem = false;
+                    wakeLockFailureCount = 0;
+                } else {
+                    return;
+                }
             }
             if (wakeLock == null || !wakeLock.isHeld()) {
                 long now = SystemClock.elapsedRealtime();
