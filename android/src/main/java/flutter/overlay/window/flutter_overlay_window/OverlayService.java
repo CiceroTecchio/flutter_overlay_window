@@ -416,9 +416,14 @@ public class OverlayService extends Service implements View.OnTouchListener {
         Log.d("OverlayService", "🔍 PONTO A: onStartCommand() INICIADO");
         
         if (intent == null) {
-            Log.w("OverlayService", "⚠️ Intent nulo, retornando START_NOT_STICKY");
-            Log.d("OverlayService", "🔍 PONTO B: Intent nulo - FALHA");
-            return START_NOT_STICKY;
+            Log.w("OverlayService", "⚠️ Intent nulo (service reiniciado pelo Android após kill)");
+            // Service was killed by Android and restarted with START_STICKY.
+            // Re-acquire WakeLock and keep the service alive so the foreground
+            // notification stays. The overlay UI will be recreated by the Dart side
+            // (FlutterOverlayWindow.showOverlay) when the app detects the overlay is inactive.
+            ensureWakeLock();
+            Log.d("OverlayService", "🔍 PONTO B: Intent nulo - mantendo service vivo com START_STICKY");
+            return START_STICKY;
         }
         
         String action = intent.getAction();
@@ -519,14 +524,27 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // ✅ Usar apenas a engine criada no onCreate()
         FlutterEngine engine = this.engine;
         if (engine == null || engine.getDartExecutor() == null) {
-            Log.e("OverlayService", "❌ FlutterEngine não disponível - onCreate() não foi chamado ou falhou");
-            return;
+            Log.e("OverlayService", "❌ FlutterEngine não disponível - tentando recriar");
+            // Try to recover from cache
+            FlutterEngine cachedEngine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+            if (cachedEngine != null && cachedEngine.getDartExecutor() != null) {
+                this.engine = cachedEngine;
+                engine = cachedEngine;
+                Log.i("OverlayService", "♻️ FlutterEngine recuperada do cache");
+            } else {
+                Log.e("OverlayService", "❌ FlutterEngine irrecuperável - parando service");
+                isRunning = false;
+                stopSelf();
+                return;
+            }
         }
-        
-        
+
+
         // ✅ Verificar se o DartExecutor ainda está executando
         if (!engine.getDartExecutor().isExecutingDart()) {
-            Log.w("OverlayService", "⚠️ DartExecutor não está mais executando Dart");
+            Log.w("OverlayService", "⚠️ DartExecutor não está mais executando Dart - parando service");
+            isRunning = false;
+            stopSelf();
             return;
         }
         
@@ -686,6 +704,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
             } catch (Exception e) {
                 Log.e("OverlayService", "❌ Erro ao adicionar FlutterView ao WindowManager: " + e.getMessage());
                 e.printStackTrace();
+                // Clean up on failure to prevent zombie state
+                try {
+                    flutterView.detachFromFlutterEngine();
+                } catch (Exception detachError) {}
+                flutterView = null;
+                windowManager = null;
+                isRunning = false;
             }
     }
 
