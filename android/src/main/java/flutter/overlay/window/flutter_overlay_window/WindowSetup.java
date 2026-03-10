@@ -13,16 +13,16 @@ public abstract class WindowSetup {
 
     private static final String TAG = "WindowSetup";
 
-    static int height = WindowManager.LayoutParams.MATCH_PARENT;
-    static int width = WindowManager.LayoutParams.MATCH_PARENT;
-    static int flag = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-    static int gravity = Gravity.CENTER;
-    static BasicMessageChannel<Object> messenger = null;
-    static String overlayTitle = "Overlay is activated";
-    static String overlayContent = "Tap to edit settings or disable";
-    static String positionGravity = "none";
-    static int notificationVisibility = NotificationCompat.VISIBILITY_PRIVATE;
-    static boolean enableDrag = false;
+    static volatile int height = WindowManager.LayoutParams.MATCH_PARENT;
+    static volatile int width = WindowManager.LayoutParams.MATCH_PARENT;
+    static volatile int flag = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+    static volatile int gravity = Gravity.CENTER;
+    static volatile BasicMessageChannel<Object> messenger = null;
+    static volatile String overlayTitle = "Overlay is activated";
+    static volatile String overlayContent = "Tap to edit settings or disable";
+    static volatile String positionGravity = "none";
+    static volatile int notificationVisibility = NotificationCompat.VISIBILITY_PRIVATE;
+    static volatile boolean enableDrag = false;
 
 
     static void setNotificationVisibility(String name) {

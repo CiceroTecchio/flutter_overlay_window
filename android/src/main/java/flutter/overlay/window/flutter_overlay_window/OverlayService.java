@@ -74,8 +74,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     public static final String INTENT_EXTRA_IS_CLOSE_WINDOW = "IsCloseWindow";
 
-    private static OverlayService instance;
-    public static boolean isRunning = false;
+    private static volatile OverlayService instance;
+    public static volatile boolean isRunning = false;
     private WindowManager windowManager = null;
     private FlutterView flutterView;
     private MethodChannel flutterChannel;
@@ -97,7 +97,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
 
     private BroadcastReceiver screenUnlockReceiver;
-    private boolean isReceiverRegistered = false;
+    private volatile boolean isReceiverRegistered = false;
+    private volatile boolean isScreenReceiverRegistered = false;
     private final Object lock = new Object();
     private Handler handler = new Handler(Looper.getMainLooper());
     private boolean sentResumeForThisUnlock = false;
@@ -360,26 +361,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.e("OverlayService", "❌ Erro ao cancelar notificação", e);
         }
 
-        super.onDestroy();
-        
-        // ✅ Clean up receivers to prevent memory leaks
-        try {
-            if (isReceiverRegistered && screenUnlockReceiver != null) {
-                Log.d("OverlayService", "📡 Desregistrando screenUnlockReceiver");
-                unregisterReceiver(screenUnlockReceiver);
-                screenUnlockReceiver = null;
-                isReceiverRegistered = false;
-            }
-            if (screenReceiver != null) {
-                Log.d("OverlayService", "📡 Desregistrando screenReceiver");
-                unregisterReceiver(screenReceiver);
-                screenReceiver = null;
-            }
-        } catch (Exception e) {
-            Log.e("OverlayService", "❌ Error unregistering receivers: " + e.getMessage(), e);
-        }
-        
-        // ✅ Clean up all handlers and timers
+        // ✅ Clean up all handlers and timers BEFORE super.onDestroy()
+        // to prevent delayed callbacks from running on a destroyed service
         try {
             if (handler != null) {
                 handler.removeCallbacksAndMessages(null);
@@ -392,13 +375,40 @@ public class OverlayService extends Service implements View.OnTouchListener {
         } catch (Exception e) {
             Log.e("OverlayService", "❌ Error cleaning up handlers: " + e.getMessage(), e);
         }
-        
-        Log.i("OverlayService", "✅ OverlayService destruído com sucesso");
+
+        // ✅ Clean up receivers BEFORE super.onDestroy()
+        try {
+            if (isReceiverRegistered && screenUnlockReceiver != null) {
+                Log.d("OverlayService", "📡 Desregistrando screenUnlockReceiver");
+                unregisterReceiver(screenUnlockReceiver);
+                screenUnlockReceiver = null;
+                isReceiverRegistered = false;
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error unregistering screenUnlockReceiver: " + e.getMessage(), e);
+        }
+        try {
+            if (isScreenReceiverRegistered && screenReceiver != null) {
+                Log.d("OverlayService", "📡 Desregistrando screenReceiver");
+                unregisterReceiver(screenReceiver);
+                screenReceiver = null;
+                isScreenReceiverRegistered = false;
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error unregistering screenReceiver: " + e.getMessage(), e);
+        }
 
         // Notificar que o service foi realmente destruído
-        Intent destroyedIntent = new Intent("flutter.overlay.window.OVERLAY_SERVICE_DESTROYED");
-        destroyedIntent.setPackage(getPackageName());
-        sendBroadcast(destroyedIntent);
+        try {
+            Intent destroyedIntent = new Intent("flutter.overlay.window.OVERLAY_SERVICE_DESTROYED");
+            destroyedIntent.setPackage(getPackageName());
+            sendBroadcast(destroyedIntent);
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error sending destroyed broadcast: " + e.getMessage(), e);
+        }
+
+        super.onDestroy();
+        Log.i("OverlayService", "✅ OverlayService destruído com sucesso");
     }
 
     @Override
@@ -628,12 +638,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 engine.getLifecycleChannel().appIsResumed();
             }
             
+            try {
             Log.d("OverlayService", "🎬 Criando FlutterView");
             long startTime = System.currentTimeMillis();
             flutterView = new FlutterView(getApplicationContext(), new FlutterTextureView(getApplicationContext()));
             long creationTime = System.currentTimeMillis() - startTime;
             Log.i("OverlayService", "✅ FlutterView criada em " + creationTime + "ms");
-            
+
             Log.d("OverlayService", "🔌 Conectando FlutterView ao FlutterEngine");
             flutterView.attachToFlutterEngine(engine);
             flutterView.setFitsSystemWindows(true);
@@ -665,7 +676,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             // ✅ Corrigir lógica de posicionamento - converter DP para pixels
             int dx = startX == OverlayConstants.DEFAULT_XY ? 0 : dpToPx(startX);
             int dy = startY == OverlayConstants.DEFAULT_XY ? -statusBarHeightPx() : dpToPx(startY);
-            
+
             Log.d("OverlayService", "🎯 Posicionamento - startX: " + startX + " -> dx: " + dx + ", startY: " + startY + " -> dy: " + dy);
             int layoutWidth = (width == -1999 || width == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(width);
             int layoutHeight = (height == -1999 || height == -1) ? WindowManager.LayoutParams.MATCH_PARENT : dpToPx(height);
@@ -690,24 +701,24 @@ public class OverlayService extends Service implements View.OnTouchListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && WindowSetup.flag == clickableFlag) {
                 params.alpha = MAXIMUM_OPACITY_ALLOWED_FOR_S_AND_HIGHER;
             }
-            
+
             // ✅ Corrigir: Usar Gravity.TOP | Gravity.LEFT para posicionamento absoluto
             params.gravity = Gravity.TOP | Gravity.RIGHT;
-            
+
             Log.d("OverlayService", "🎯 LayoutParams - x: " + params.x + ", y: " + params.y + ", gravity: " + params.gravity);
 
             Log.d("OverlayService", "📱 Adicionando FlutterView ao WindowManager");
-            try {
-                windowManager.addView(flutterView, params);
-                Log.i("OverlayService", "✅ FlutterView adicionada ao WindowManager com sucesso");
-                Log.i("OverlayService", "✅ Overlay posicionado com sucesso em (" + dx + ", " + dy + ")");
+            windowManager.addView(flutterView, params);
+            Log.i("OverlayService", "✅ FlutterView adicionada ao WindowManager com sucesso");
+            Log.i("OverlayService", "✅ Overlay posicionado com sucesso em (" + dx + ", " + dy + ")");
             } catch (Exception e) {
-                Log.e("OverlayService", "❌ Erro ao adicionar FlutterView ao WindowManager: " + e.getMessage());
-                e.printStackTrace();
+                Log.e("OverlayService", "❌ Erro ao criar/adicionar FlutterView: " + e.getMessage(), e);
                 // Clean up on failure to prevent zombie state
-                try {
-                    flutterView.detachFromFlutterEngine();
-                } catch (Exception detachError) {}
+                if (flutterView != null) {
+                    try {
+                        flutterView.detachFromFlutterEngine();
+                    } catch (Exception detachError) {}
+                }
                 flutterView = null;
                 windowManager = null;
                 isRunning = false;
@@ -1003,6 +1014,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         filter.addAction(Intent.ACTION_USER_PRESENT);
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         registerReceiver(screenReceiver, filter);
+        isScreenReceiverRegistered = true;
         registerScreenUnlockReceiver();
         
         // ✅ Verificar se já temos uma engine na instância
@@ -1760,8 +1772,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 wakeLock.setReferenceCounted(false);
                 
                 if (wakeLock != null) {
-                    // Adquirir o WakeLock sem timeout (0 = nunca expira até ser liberado manualmente)
-                    wakeLock.acquire(0);
+                    // Adquirir o WakeLock com timeout de 30 minutos (renovado pelo ensureWakeLock)
+                    // Evita WakeLock permanente caso o service crashe sem chamar release()
+                    wakeLock.acquire(30 * 60 * 1000L);
                     lastWakeLockStableTimestamp = SystemClock.elapsedRealtime();
                     wakeLockRestrictedBySystem = false;
                     wakeLockFailureCount = 0;
