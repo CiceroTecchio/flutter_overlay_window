@@ -1002,11 +1002,18 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public void onCreate() { // Get the cached FlutterEngine
         Log.d("OverlayService", "🚀 onCreate() - Iniciando OverlayService");
         Log.d("OverlayService", "🔍 onCreate() chamado - Engine count atual: " + (engine != null ? "Engine já existe" : "Engine nula"));
-        
-        
+
+
         // Initialize resources early to prevent null pointer exceptions
         mResources = getApplicationContext().getResources();
-        
+
+        // 🔹 CRITICAL: Call startForeground() IMMEDIATELY to avoid
+        // ForegroundServiceDidNotStartInTimeException.
+        // Android requires startForeground() within ~5s of startForegroundService().
+        // Engine initialization below can take longer than that, and early-return
+        // paths were previously skipping this call entirely.
+        ensureStartForeground();
+
         // ✅ Adquirir WakeLock para manter o serviço ativo mesmo com tela bloqueada
         acquireWakeLock();
 
@@ -1016,14 +1023,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
         registerReceiver(screenReceiver, filter);
         isScreenReceiverRegistered = true;
         registerScreenUnlockReceiver();
-        
+
         // ✅ Verificar se já temos uma engine na instância
         if (this.engine != null && this.engine.getDartExecutor() != null) {
             Log.i("OverlayService", "♻️ Engine já existe na instância - reutilizando");
+            instance = this;
             return;
         }
-        
-        
+
+
         // ✅ Verificar se já existe uma instância do service
         if (instance != null && instance != this) {
             Log.i("OverlayService", "♻️ Service já existe - reutilizando instância existente");
@@ -1125,7 +1133,20 @@ public class OverlayService extends Service implements View.OnTouchListener {
             }
         }
 
-        // 🔹 1. Criar canal e notificação rapidamente
+        // startForeground() already called at the top of onCreate() via ensureStartForeground().
+        // Now start notification monitoring since we know the service is in foreground.
+        startNotificationMonitoring();
+
+        instance = this;
+    }
+
+    /**
+     * Builds the foreground notification and calls startForeground() immediately.
+     * MUST be called as early as possible in onCreate() — before any logic that
+     * might return early or take significant time (e.g., FlutterEngine init).
+     * Android enforces a ~5s deadline from startForegroundService() to startForeground().
+     */
+    private void ensureStartForeground() {
         createNotificationChannel();
         Intent notificationIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
         int pendingFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -1134,34 +1155,27 @@ public class OverlayService extends Service implements View.OnTouchListener {
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingFlags);
 
         int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
-        
-        // ✅ Usar NotificationCompat.Builder com todas as configurações de persistência
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
                 .setContentTitle(WindowSetup.overlayTitle)
                 .setContentText(WindowSetup.overlayContent)
                 .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
                 .setContentIntent(pendingIntent)
                 .setVisibility(WindowSetup.notificationVisibility)
-                .setOngoing(true) // ✅ Evento em andamento
-                .setAutoCancel(false) // ✅ Não permite fechar ao tocar
+                .setOngoing(true)
+                .setAutoCancel(false)
                 .setSound(null)
                 .setVibrate(new long[]{0L})
-                .setPriority(NotificationCompat.PRIORITY_LOW) // ✅ Prioridade baixa para não ser intrusiva
-                .setCategory(NotificationCompat.CATEGORY_SERVICE) // ✅ Categoria de serviço
-                .setShowWhen(false) // ✅ Não mostrar timestamp
-                .setLocalOnly(true); // ✅ Apenas local, não sincronizar
-        
-        // ✅ Aplicar flags de persistência usando NotificationCompat
-        builder.setOngoing(true);
-        builder.setAutoCancel(false);
-        
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setShowWhen(false)
+                .setLocalOnly(true);
+
         Notification notification = builder.build();
-        
-        // ✅ Aplicar flags adicionais para máxima persistência
-        notification.flags |= Notification.FLAG_NO_CLEAR; // Não pode ser limpa pelo usuário
-        notification.flags |= Notification.FLAG_ONGOING_EVENT; // Evento em andamento
-        notification.flags |= Notification.FLAG_FOREGROUND_SERVICE; // Serviço em primeiro plano
-        // FLAG_INSISTENT removido - pode causar comportamento indesejado em ROMs como MIUI/Realme
+
+        notification.flags |= Notification.FLAG_NO_CLEAR;
+        notification.flags |= Notification.FLAG_ONGOING_EVENT;
+        notification.flags |= Notification.FLAG_FOREGROUND_SERVICE;
 
         boolean hasPermission = hasForegroundServicePermission();
         Log.d("OverlayService", "🔐 Foreground service permission check: " + hasPermission);
@@ -1169,9 +1183,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         boolean startedForeground = false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             try {
-                // ✅ Usar apenas o tipo SPECIAL_USE para manter o overlay ativo em segundo plano
                 int serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
-                
                 startForeground(OverlayConstants.NOTIFICATION_ID, notification, serviceType);
                 startedForeground = true;
                 Log.d("OverlayService", "✅ startForeground() invoked with SPECIAL_USE type");
@@ -1210,10 +1222,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             Log.w("OverlayService", "⚠️ Started foreground service but FOREGROUND_SERVICE permission check returned false");
         } else {
             Log.d("OverlayService", "✅ Foreground service started successfully");
-            startNotificationMonitoring();
         }
-
-        instance = this;
     }
 
     private void createNotificationChannel() {
