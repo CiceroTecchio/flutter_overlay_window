@@ -1051,7 +1051,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
             
             
             try {
-                FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
+                // Força disable do Impeller no engine do overlay — o manifest sozinho
+                // não é honrado quando o engine é criado fora do FlutterActivity
+                FlutterEngineGroup engineGroup = new FlutterEngineGroup(this, new String[]{"--enable-impeller=false"});
                 DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
                         FlutterInjector.instance().flutterLoader().findAppBundlePath(),
                         "overlayMain");
@@ -1169,7 +1171,11 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
                 .setShowWhen(false)
-                .setLocalOnly(true);
+                .setLocalOnly(true)
+                // Android 12+ pode atrasar a exibição da notificação em até 10s, durante os quais
+                // o sistema considera o service como "ainda não em foreground" e dispara
+                // ForegroundServiceDidNotStartInTimeException. IMMEDIATE força exibição imediata.
+                .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE);
 
         Notification notification = builder.build();
 
