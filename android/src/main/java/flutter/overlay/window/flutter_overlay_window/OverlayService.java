@@ -157,6 +157,26 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     };
 
+    // O engine desenha numa superfície só, e o detach de qualquer FlutterView derruba a que estiver ativa.
+    // Chamar na main thread.
+    static void releaseSurface() {
+        OverlayService service = instance;
+        if (service == null || service.flutterView == null) return;
+        Log.d("OverlayService", "🔌 Liberando superfície para a LockScreenOverlayActivity");
+        service.flutterView.detachFromFlutterEngine();
+    }
+
+    // detach + attach: attach sozinho não faz nada se a view ainda se acha conectada.
+    static void reclaimSurface() {
+        OverlayService service = instance;
+        if (service == null || service.flutterView == null) return;
+        FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+        if (engine == null) return;
+        Log.d("OverlayService", "🔌 Retomando superfície após LockScreenOverlayActivity");
+        service.flutterView.detachFromFlutterEngine();
+        service.flutterView.attachToFlutterEngine(engine);
+    }
+
     private void registerScreenUnlockReceiver() {
         if (isReceiverRegistered) return;
 
@@ -183,8 +203,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
                             if (flutterView != null && flutterEngine != null && flutterEngine.getDartExecutor() != null) {
                                 try {
                                     // ✅ Verificar se o DartExecutor ainda está executando
+                                    // Sem attach aqui: a superfície volta no onDestroy da LockScreenOverlayActivity (reclaimSurface).
                                     if (flutterEngine.getDartExecutor().isExecutingDart()) {
-                                        flutterView.attachToFlutterEngine(flutterEngine);
                                         if (flutterEngine.getLifecycleChannel() != null) {
                                             flutterEngine.getLifecycleChannel().appIsResumed();
                                         }

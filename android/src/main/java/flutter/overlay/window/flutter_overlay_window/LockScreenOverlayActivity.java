@@ -124,8 +124,14 @@ public class LockScreenOverlayActivity extends Activity {
 
         Log.d("LockScreenOverlay", "🎬 Criando FlutterView para LockScreen");
         new Handler(getMainLooper()).post(() -> {
+            // Fechada antes do post rodar: o onDestroy já passou e não desconectaria esta view.
+            if (isFinishing() || isDestroyed()) {
+                Log.w("LockScreenOverlay", "⚠️ Activity já finalizada, FlutterView não será criada");
+                return;
+            }
             long startTime = System.currentTimeMillis();
-            
+
+            OverlayService.releaseSurface();
             flutterView = new FlutterView(this, new FlutterTextureView(this));
             Log.d("LockScreenOverlay", "🔌 Conectando FlutterView ao FlutterEngine");
             flutterView.attachToFlutterEngine(flutterEngine);
@@ -176,8 +182,9 @@ public class LockScreenOverlayActivity extends Activity {
             Log.d("LockScreenOverlay", "🔌 Desconectando FlutterView do FlutterEngine");
             flutterView.detachFromFlutterEngine();
             flutterView = null;
+            OverlayService.reclaimSurface();
         }
-        
+
         isRunning = false;
         Log.i("LockScreenOverlay", "✅ LockScreenOverlayActivity destruída com sucesso");
     }
