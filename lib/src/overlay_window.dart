@@ -200,6 +200,50 @@ class FlutterOverlayWindow {
     return _res ?? false;
   }
 
+  /// Mantém o serviço da sobreposição de pé enquanto [enabled] for true, mesmo
+  /// com o app aberto (janela escondida), e o reergue depois de o processo
+  /// morrer. Com ele ligado, [closeOverlay] só esconde a janela.
+  ///
+  /// [width], [height], [x] e [y] são a janelinha que sobe quando o serviço é
+  /// reerguido sem o app. Desligar para o serviço por completo.
+  static Future<bool> setKeepAlive(
+    bool enabled, {
+    String? overlayTitle,
+    String? overlayContent,
+    int? width,
+    int? height,
+    OverlayPosition? position,
+  }) async {
+    final bool? _res = await _channel.invokeMethod<bool?>('setKeepAlive', {
+      'enabled': enabled,
+      'overlayTitle': overlayTitle,
+      'overlayContent': overlayContent,
+      'width': width,
+      'height': height,
+      'x': position?.x.toInt(),
+      'y': position?.y.toInt(),
+    });
+    return _res ?? false;
+  }
+
+  /// Reergue o serviço (e a janelinha, se o app não estiver na tela) quando o
+  /// manter vivo está ligado. Pensado para o push de prioridade alta, que é
+  /// uma das poucas situações em que o Android deixa iniciar o serviço a
+  /// partir do segundo plano.
+  static Future<bool> restoreService({String? motivo}) async {
+    final bool? _res = await _channel.invokeMethod<bool?>(
+      'restoreService',
+      {'motivo': motivo},
+    );
+    return _res ?? false;
+  }
+
+  /// O serviço está de pé, com ou sem janela na tela.
+  static Future<bool> isServiceRunning() async {
+    final bool? _res = await _channel.invokeMethod<bool?>('isServiceRunning');
+    return _res ?? false;
+  }
+
   /// Dispose overlay stream
   static void disposeOverlayListener() {
     if (!_controller.isClosed) {

@@ -75,7 +75,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public static final String INTENT_EXTRA_IS_CLOSE_WINDOW = "IsCloseWindow";
 
     private static volatile OverlayService instance;
+
+    static OverlayService instance() {
+        return instance;
+    }
     public static volatile boolean isRunning = false;
+    // isRunning é "a janela está na tela"; serviceAlive é "o serviço está de pé".
+    // Com o manter vivo ligado, o serviço fica de pé com a janela escondida
+    // enquanto o app está aberto.
+    public static volatile boolean serviceAlive = false;
     private WindowManager windowManager = null;
     private FlutterView flutterView;
     private MethodChannel flutterChannel;
@@ -252,6 +260,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
     @Override
     public void onDestroy() {
         Log.i("OverlayService", "🗑️ onDestroy() - Iniciando destruição do OverlayService");
+        serviceAlive = false;
+        saveBadgePosition();
         
         // ✅ Liberar WakeLock se estiver ativo
         releaseWakeLock();
@@ -435,7 +445,15 @@ public class OverlayService extends Service implements View.OnTouchListener {
     public void onTaskRemoved(Intent rootIntent) {
         Log.i("OverlayService", "📱 onTaskRemoved - App removido dos recentes, mantendo overlay ativo");
         // Não chamar super.onTaskRemoved() - manter o serviço rodando
-        // O START_STICKY já garante que o serviço será reiniciado se necessário
+        if (KeepAlive.isEnabled(this)) {
+            // O `paused` do app sobe a janelinha, mas quem arrasta rápido tira o app
+            // dos recentes antes de ele terminar.
+            if (flutterView == null) {
+                showWindowFromKeepAlive("task_removed");
+            }
+            // Fabricante que mata o processo ao arrastar: o alarme reergue o serviço.
+            KeepAlive.scheduleWatchdog(this, 5000L);
+        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
@@ -452,11 +470,26 @@ public class OverlayService extends Service implements View.OnTouchListener {
             // notification stays. The overlay UI will be recreated by the Dart side
             // (FlutterOverlayWindow.showOverlay) when the app detects the overlay is inactive.
             ensureWakeLock();
+            if (KeepAlive.isEnabled(this) && flutterView == null && !KeepAlive.appVisible()) {
+                showWindowFromKeepAlive("start_sticky");
+            }
             Log.d("OverlayService", "🔍 PONTO B: Intent nulo - mantendo service vivo com START_STICKY");
             return START_STICKY;
         }
         
         String action = intent.getAction();
+        if (KeepAlive.ACTION_KEEP_ALIVE.equals(action)) {
+            // Só o serviço: o app está aberto, a janelinha sobe no `paused`.
+            ensureWakeLock();
+            return START_STICKY;
+        }
+        if (KeepAlive.ACTION_RESTORE.equals(action)) {
+            ensureWakeLock();
+            if (flutterView == null && !KeepAlive.appVisible()) {
+                showWindowFromKeepAlive(intent.getStringExtra("motivo"));
+            }
+            return START_STICKY;
+        }
         wakeLockRetrySuspended = false;
         Log.d("OverlayService", "📋 Action do Intent: " + (action != null ? action : "null"));
         Log.d("OverlayService", "📊 Estado antes - isRunning: " + isRunning + ", windowManager: " + (windowManager != null) + ", flutterView: " + (flutterView != null));
@@ -498,7 +531,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         return START_STICKY;
     }
 
-    private void initOverlay(Intent intent) {
+    void initOverlay(Intent intent) {
         Log.d("OverlayService", "🔧 initOverlay() - Iniciando configuração do overlay");
         Log.d("OverlayService", "📊 Estado atual - isRunning: " + isRunning + ", windowManager: " + (windowManager != null) + ", flutterView: " + (flutterView != null));
         
@@ -1033,6 +1066,9 @@ public class OverlayService extends Service implements View.OnTouchListener {
         // Engine initialization below can take longer than that, and early-return
         // paths were previously skipping this call entirely.
         ensureStartForeground();
+        serviceAlive = true;
+        KeepAlive.touch(this);
+        KeepAlive.registerVisibilityCallbacks(this);
 
         // ✅ Adquirir WakeLock para manter o serviço ativo mesmo com tela bloqueada
         acquireWakeLock();
@@ -1179,8 +1215,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
         int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
-                .setContentTitle(WindowSetup.overlayTitle)
-                .setContentText(WindowSetup.overlayContent)
+                .setContentTitle(notificationTitle())
+                .setContentText(notificationContent())
                 .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
                 .setContentIntent(pendingIntent)
                 .setVisibility(WindowSetup.notificationVisibility)
@@ -1306,9 +1342,10 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 @Override
                 public void run() {
                     try {
-                        if (!isRunning) {
+                        if (!serviceAlive) {
                             return; // Service não está rodando, parar monitoramento
                         }
+                        KeepAlive.touch(getApplicationContext());
                         
                         // Verificar se a notificação ainda existe
                         NotificationManager notificationManager = (NotificationManager) 
@@ -1367,7 +1404,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
     
-    private void recreateNotification() {
+    void recreateNotification() {
         try {
             Log.d("OverlayService", "🔄 Recreating notification...");
             
@@ -1381,8 +1418,8 @@ public class OverlayService extends Service implements View.OnTouchListener {
             int notifyIcon = getDrawableResourceId("mipmap", "ic_launcher_notification");
             
             NotificationCompat.Builder builder = new NotificationCompat.Builder(this, OverlayConstants.CHANNEL_ID)
-                    .setContentTitle(WindowSetup.overlayTitle)
-                    .setContentText(WindowSetup.overlayContent)
+                    .setContentTitle(notificationTitle())
+                    .setContentText(notificationContent())
                     .setSmallIcon(notifyIcon == 0 ? R.drawable.notification_icon : notifyIcon)
                     .setContentIntent(pendingIntent)
                     .setVisibility(WindowSetup.notificationVisibility)
@@ -1730,6 +1767,72 @@ public class OverlayService extends Service implements View.OnTouchListener {
             return super.cancel();
         }
     }
+    // Com o manter vivo, o título da notificação vem das preferências: num processo
+    // reerguido pelo sistema o WindowSetup ainda está com o texto padrão do plugin.
+    private String notificationTitle() {
+        return KeepAlive.isEnabled(this) ? KeepAlive.title(this) : WindowSetup.overlayTitle;
+    }
+
+    private String notificationContent() {
+        return KeepAlive.isEnabled(this) ? KeepAlive.content(this) : WindowSetup.overlayContent;
+    }
+
+    void showWindowFromKeepAlive(String motivo) {
+        Log.i("OverlayService", "🪟 Subindo a janelinha a partir do manter vivo (" + motivo + ")");
+        try {
+            mResources = getApplicationContext().getResources();
+            initOverlay(KeepAlive.windowIntent(this));
+            ensureWakeLock();
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Falha ao subir a janelinha do manter vivo: " + e.getMessage(), e);
+        }
+    }
+
+    /** Tira a janela da tela sem parar o serviço: o app assumiu. */
+    void hideWindow() {
+        saveBadgePosition();
+        if (windowManager != null && flutterView != null) {
+            try {
+                if (flutterView.getParent() != null) {
+                    windowManager.removeView(flutterView);
+                }
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Erro ao esconder a janela: " + e.getMessage(), e);
+            }
+            try {
+                flutterView.detachFromFlutterEngine();
+            } catch (Exception e) {
+                Log.e("OverlayService", "❌ Erro ao desconectar a FlutterView: " + e.getMessage(), e);
+            }
+        }
+        windowManager = null;
+        flutterView = null;
+        cachedLayoutParams = null;
+        isRunning = false;
+        try {
+            FlutterEngine cached = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+            if (cached != null && cached.getDartExecutor().isExecutingDart()) {
+                new MethodChannel(cached.getDartExecutor(), "my_custom_overlay_channel")
+                        .invokeMethod("onOverlayClosed", null);
+            }
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Falha ao avisar o Flutter do fechamento: " + e.getMessage());
+        }
+    }
+
+    // Só a janelinha vira posição de volta: com o card aberto a janela ocupa a
+    // largura toda, e aquela posição não é a de um balão.
+    private void saveBadgePosition() {
+        try {
+            if (!KeepAlive.isEnabled(this) || flutterView == null) return;
+            WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
+            if (params == null || params.width == WindowManager.LayoutParams.MATCH_PARENT) return;
+            KeepAlive.savePosition(this, (int) Math.round(pxToDp(params.x)), (int) Math.round(pxToDp(params.y)));
+        } catch (Exception e) {
+            Log.w("OverlayService", "⚠️ Não foi possível guardar a posição da janelinha: " + e.getMessage());
+        }
+    }
+
     private void bringOverlayToFront() {
         if (flutterView == null || windowManager == null) {
             Log.w("OverlayService", "⚠️ bringOverlayToFront: Missing components");
@@ -1831,7 +1934,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
      */
     private void ensureWakeLock() {
         try {
-            if (!isRunning) {
+            if (!serviceAlive) {
                 return;
             }
             // Permitir re-tentativa após o período de restrição expirar
@@ -1906,7 +2009,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     private void markWakeLockRestriction(String reason) {
-        if (!isRunning) {
+        if (!serviceAlive) {
             return;
         }
         long now = SystemClock.elapsedRealtime();

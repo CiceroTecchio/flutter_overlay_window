@@ -72,11 +72,10 @@ public class FlutterOverlayWindowPlugin implements
     private Result pendingResult;
     final int REQUEST_CODE_FOR_OVERLAY_PERMISSION = 1248;
     
-    private BroadcastReceiver serviceDestroyedReceiver;
-    private Result pendingCloseResult;
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
         this.context = flutterPluginBinding.getApplicationContext();
+        KeepAlive.registerVisibilityCallbacks(this.context);
 
         channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), OverlayConstants.CHANNEL_TAG);
         channel.setMethodCallHandler(this);
@@ -221,6 +220,30 @@ public class FlutterOverlayWindowPlugin implements
                     }
                 }
                 
+                OverlayService vivo = OverlayService.instance();
+                if (OverlayService.serviceAlive && vivo != null) {
+                    // Com o serviço de pé não há o que iniciar: pedir de novo ao Android
+                    // passaria pela restrição de iniciar serviço a partir do segundo plano,
+                    // que no Android 15 exige janela já visível — justo o que falta aqui.
+                    try {
+                        final Intent intent = new Intent(context, OverlayService.class);
+                        intent.putExtra("startX", startX);
+                        intent.putExtra("startY", startY);
+                        intent.putExtra("width", width);
+                        intent.putExtra("height", height);
+                        intent.putExtra("enableDrag", enableDrag);
+                        intent.putExtra("alignment", alignment);
+                        intent.putExtra("overlayTitle", overlayTitle);
+                        intent.putExtra("overlayContent", overlayContent);
+                        vivo.initOverlay(intent);
+                        result.success(null);
+                    } catch (Exception e) {
+                        Log.e("FlutterOverlayWindowPlugin", "❌ Falha ao subir a janela no serviço vivo: " + e.getMessage(), e);
+                        result.error("SERVICE_ERROR", "Failed to show overlay window", e.getMessage());
+                    }
+                    return;
+                }
+
                 try {
                     Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 7: Iniciando OverlayService normal");
                     Log.d("FlutterOverlayWindowPlugin", "🚀 Iniciando OverlayService normal");
@@ -275,6 +298,15 @@ public class FlutterOverlayWindowPlugin implements
             Log.d("FlutterOverlayWindowPlugin", "🔍 PONTO 12: showOverlay() concluído com sucesso");
             Log.i("FlutterOverlayWindowPlugin", "✅ showOverlay() - Overlay iniciado com sucesso");
             result.success(null);
+        } else if (call.method.equals("setKeepAlive")) {
+            setKeepAlive(call, result);
+            return;
+        } else if (call.method.equals("restoreService")) {
+            restoreService(call, result);
+            return;
+        } else if (call.method.equals("isServiceRunning")) {
+            result.success(OverlayService.serviceAlive);
+            return;
         } else if (call.method.equals("isOverlayActive")) {
             result.success(OverlayService.isRunning || LockScreenOverlayActivity.isRunning);
             return;
@@ -345,8 +377,15 @@ public class FlutterOverlayWindowPlugin implements
                     Log.d("FlutterOverlayWindowPlugin", "ℹ️ LockScreenOverlayActivity não está rodando, pulando broadcast");
                 }
                
+               OverlayService vivo = OverlayService.instance();
+               if (KeepAlive.isEnabled(context) && OverlayService.serviceAlive && vivo != null) {
+                    vivo.hideWindow();
+                    result.success(true);
+                    return;
+               }
+
                // Fechar OverlayService (se estiver rodando)
-               if (OverlayService.isRunning) {
+               if (OverlayService.isRunning || OverlayService.serviceAlive) {
                     Log.d("FlutterOverlayWindowPlugin", "🛑 Parando OverlayService");
                     Intent i = new Intent(context, OverlayService.class);
                     context.stopService(i);
@@ -369,6 +408,85 @@ public class FlutterOverlayWindowPlugin implements
             result.notImplemented();
         }
 
+    }
+
+    private void setKeepAlive(MethodCall call, Result result) {
+        Boolean enabled = call.argument("enabled");
+        if (enabled == null || !enabled) {
+            KeepAlive.disable(context);
+            if (LockScreenOverlayActivity.isRunning) {
+                Intent closeIntent = new Intent("flutter.overlay.window.CLOSE_LOCKSCREEN_OVERLAY");
+                closeIntent.setPackage(context.getPackageName());
+                context.sendBroadcast(closeIntent);
+            }
+            if (OverlayService.serviceAlive) {
+                context.stopService(new Intent(context, OverlayService.class));
+                waitForServiceDestruction(result);
+                return;
+            }
+            result.success(true);
+            return;
+        }
+
+        if (!checkOverlayPermission()) {
+            result.error("PERMISSION", "overlay permission is not enabled", null);
+            return;
+        }
+        String title = call.argument("overlayTitle");
+        String content = call.argument("overlayContent");
+        Integer width = call.argument("width");
+        Integer height = call.argument("height");
+        Integer x = call.argument("x");
+        Integer y = call.argument("y");
+        KeepAlive.enable(context,
+                title != null ? title : WindowSetup.overlayTitle,
+                content != null ? content : WindowSetup.overlayContent,
+                width != null ? width : 50,
+                height != null ? height : 50,
+                x != null ? x : OverlayConstants.DEFAULT_XY,
+                y != null ? y : OverlayConstants.DEFAULT_XY);
+        KeepAlive.scheduleWatchdog(context, KeepAlive.WATCHDOG_INTERVAL_MS);
+
+        OverlayService vivo = OverlayService.instance();
+        if (OverlayService.serviceAlive && vivo != null) {
+            vivo.recreateNotification();
+            result.success(true);
+            return;
+        }
+        try {
+            Intent intent = new Intent(context, OverlayService.class);
+            intent.setAction(KeepAlive.ACTION_KEEP_ALIVE);
+            WindowSetup.overlayTitle = KeepAlive.title(context);
+            WindowSetup.overlayContent = KeepAlive.content(context);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent);
+            } else {
+                context.startService(intent);
+            }
+            result.success(true);
+        } catch (Exception e) {
+            Log.e("FlutterOverlayWindowPlugin", "❌ Falha ao iniciar o serviço do manter vivo: " + e.getMessage(), e);
+            result.error("SERVICE_ERROR", "Failed to start keep alive service", e.getMessage());
+        }
+    }
+
+    // Chamado pelo push de "acordar": o servidor viu o entregador online sem
+    // localização. Não confere o tempo parado — quem manda é o servidor.
+    private void restoreService(MethodCall call, Result result) {
+        if (!KeepAlive.isEnabled(context) || !checkOverlayPermission()) {
+            result.success(false);
+            return;
+        }
+        OverlayService vivo = OverlayService.instance();
+        if (OverlayService.serviceAlive && vivo != null) {
+            if (!OverlayService.isRunning && !LockScreenOverlayActivity.isRunning && !KeepAlive.appVisible()) {
+                vivo.showWindowFromKeepAlive("restore_service");
+            }
+            result.success(true);
+            return;
+        }
+        String motivo = call.argument("motivo");
+        result.success(KeepAlive.startRestore(context, motivo != null ? motivo : "restore_service"));
     }
 
     @Override
@@ -574,49 +692,43 @@ public class FlutterOverlayWindowPlugin implements
         }
     }
     
+    // Um receiver por chamada: com um campo só, a segunda chamada simultânea
+    // (fechar a janela e desligar o manter vivo ao mesmo tempo) sobrescrevia a
+    // primeira e o Future dela nunca completava.
     private void waitForServiceDestruction(Result result) {
-        pendingCloseResult = result;
-        
-        serviceDestroyedReceiver = new BroadcastReceiver() {
+        final boolean[] done = {false};
+        final BroadcastReceiver[] receiver = new BroadcastReceiver[1];
+        final Runnable finish = () -> {
+            if (done[0]) return;
+            done[0] = true;
+            try {
+                context.unregisterReceiver(receiver[0]);
+            } catch (Exception e) {
+                Log.e("FlutterOverlayWindowPlugin", "Erro ao desregistrar receiver: " + e.getMessage());
+            }
+            result.success(true);
+        };
+        receiver[0] = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 Log.d("FlutterOverlayWindowPlugin", "✅ Broadcast de destruição do OverlayService recebido");
-                if (pendingCloseResult != null) {
-                    pendingCloseResult.success(true);
-                    pendingCloseResult = null;
-                }
-                
-                // Desregistrar o receiver
-                try {
-                    context.unregisterReceiver(serviceDestroyedReceiver);
-                } catch (Exception e) {
-                    Log.e("FlutterOverlayWindowPlugin", "Erro ao desregistrar receiver: " + e.getMessage());
-                }
-                serviceDestroyedReceiver = null;
+                finish.run();
             }
         };
-        
+
         IntentFilter filter = new IntentFilter("flutter.overlay.window.OVERLAY_SERVICE_DESTROYED");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(serviceDestroyedReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            context.registerReceiver(receiver[0], filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
-            context.registerReceiver(serviceDestroyedReceiver, filter);
+            context.registerReceiver(receiver[0], filter);
         }
-        
-        // Timeout de 5 segundos
+
+        // Retorna sucesso mesmo com timeout
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (pendingCloseResult != null) {
+            if (!done[0]) {
                 Log.w("FlutterOverlayWindowPlugin", "⚠️ Timeout aguardando destruição do OverlayService");
-                pendingCloseResult.success(true); // Retorna sucesso mesmo com timeout
-                pendingCloseResult = null;
-                
-                try {
-                    context.unregisterReceiver(serviceDestroyedReceiver);
-                } catch (Exception e) {
-                    Log.e("FlutterOverlayWindowPlugin", "Erro ao desregistrar receiver no timeout: " + e.getMessage());
-                }
-                serviceDestroyedReceiver = null;
             }
+            finish.run();
         }, 5000);
     }
 
