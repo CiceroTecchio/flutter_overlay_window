@@ -238,6 +238,14 @@ class FlutterOverlayWindow {
     return _res ?? false;
   }
 
+  /// Existe tela do app viva no processo — ou seja, o isolate do app está de
+  /// pé. O nome de porta registrado pelo app não serve para isso: ele continua
+  /// registrado depois de o app morrer.
+  static Future<bool> isAppAlive() async {
+    final bool? _res = await _channel.invokeMethod<bool?>('isAppAlive');
+    return _res ?? false;
+  }
+
   /// O serviço está de pé, com ou sem janela na tela.
   static Future<bool> isServiceRunning() async {
     final bool? _res = await _channel.invokeMethod<bool?>('isServiceRunning');

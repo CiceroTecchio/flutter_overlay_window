@@ -139,6 +139,30 @@ public final class KeepAlive {
         }
     }
 
+    /**
+     * Chamar no Application.onCreate. O processo sobe por muitos motivos que não
+     * são o serviço (push, tarefa agendada do sistema, alarme de outra lib), e
+     * no Xiaomi sem "Início automático" o sistema não religa o serviço depois de
+     * matá-lo: esta é a porta que sobra. Espera 2 s para o app, se for ele que
+     * está abrindo, já estar na tela — aí o RESTORE sobe só o serviço, sem janela.
+     */
+    public static void restoreOnProcessStart(Context context) {
+        final Context app = context.getApplicationContext();
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                if (!isEnabled(app) || OverlayService.serviceAlive) return;
+                if (isStale(app)) {
+                    disable(app);
+                    return;
+                }
+                scheduleWatchdog(app, WATCHDOG_INTERVAL_MS);
+                startRestore(app, "process_start");
+            } catch (Exception e) {
+                Log.w(TAG, "Não foi possível reerguer o serviço no início do processo: " + e.getMessage());
+            }
+        }, 2000L);
+    }
+
     static void scheduleWatchdog(Context context, long delayMs) {
         try {
             AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
@@ -181,14 +205,21 @@ public final class KeepAlive {
     // por cima do app aberto ela cobriria a tela de quem está usando.
 
     private static int startedActivities = 0;
+    private static int createdActivities = 0;
     private static boolean callbacksRegistered = false;
 
-    static synchronized void registerVisibilityCallbacks(Context context) {
+    /**
+     * Chamar no Application.onCreate: registrado depois, o onCreate da primeira
+     * tela já passou e ela nunca seria contada como viva.
+     */
+    public static synchronized void registerVisibilityCallbacks(Context context) {
         if (callbacksRegistered) return;
         Context app = context.getApplicationContext();
         if (!(app instanceof Application)) return;
         ((Application) app).registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
-            @Override public void onActivityCreated(android.app.Activity a, android.os.Bundle b) {}
+            @Override public void onActivityCreated(android.app.Activity a, android.os.Bundle b) {
+                if (!(a instanceof LockScreenOverlayActivity)) createdActivities++;
+            }
             @Override public void onActivityStarted(android.app.Activity a) {
                 if (!(a instanceof LockScreenOverlayActivity)) startedActivities++;
             }
@@ -196,14 +227,50 @@ public final class KeepAlive {
             @Override public void onActivityPaused(android.app.Activity a) {}
             @Override public void onActivityStopped(android.app.Activity a) {
                 if (!(a instanceof LockScreenOverlayActivity) && startedActivities > 0) startedActivities--;
+                if (startedActivities == 0) showWindowWhenAppLeaves(a.getApplicationContext());
             }
             @Override public void onActivitySaveInstanceState(android.app.Activity a, android.os.Bundle b) {}
-            @Override public void onActivityDestroyed(android.app.Activity a) {}
+            @Override public void onActivityDestroyed(android.app.Activity a) {
+                if (!(a instanceof LockScreenOverlayActivity) && createdActivities > 0) createdActivities--;
+            }
         });
         callbacksRegistered = true;
     }
 
+    /**
+     * Com o serviço mantido, a janelinha sobe aqui ao sair do app, e não no
+     * `paused` do Dart: aquele fica numa fila atrás do `resumed` e leva segundos,
+     * e quem minimiza e arrasta dos recentes nesse meio-tempo mata o isolate antes
+     * de a janela subir. A espera cobre a rotação e a troca entre telas do app,
+     * que passam por zero telas visíveis sem o app ter saído.
+     */
+    private static void showWindowWhenAppLeaves(Context context) {
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                if (appVisible() || !isEnabled(context)) return;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                        && !android.provider.Settings.canDrawOverlays(context)) return;
+                if (LockScreenOverlayActivity.isRunning) return;
+                OverlayService vivo = OverlayService.instance();
+                if (!OverlayService.serviceAlive || vivo == null || vivo.hasWindow()) return;
+                vivo.showWindowFromKeepAlive("app_stopped");
+            } catch (Exception e) {
+                Log.w(TAG, "Não foi possível subir a janelinha ao sair do app: " + e.getMessage());
+            }
+        }, 400L);
+    }
+
     static boolean appVisible() {
         return startedActivities > 0;
+    }
+
+    /**
+     * Existe tela do app no processo. A engine do app é da tela: destruída a
+     * tela (app arrastado dos recentes, fechado pelo sistema), o isolate do app
+     * morre junto — mas o nome da porta dele continua registrado, e é por isso
+     * que a sobreposição pergunta aqui em vez de confiar no registro.
+     */
+    static boolean appAlive() {
+        return createdActivities > 0;
     }
 }

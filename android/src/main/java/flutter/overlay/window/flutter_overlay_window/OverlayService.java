@@ -610,6 +610,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             stopSelf();
             return;
         }
+        informaTamanhoDaTela(engine);
         
         Log.d("OverlayService", "♻️ Reutilizando FlutterEngine do onCreate()");
         if (flutterChannel == null && engine != null && engine.getDartExecutor() != null) {
@@ -1775,6 +1776,38 @@ public class OverlayService extends Service implements View.OnTouchListener {
 
     private String notificationContent() {
         return KeepAlive.isEnabled(this) ? KeepAlive.content(this) : WindowSetup.overlayContent;
+    }
+
+    /**
+     * O Flutter só conta o tamanho da tela à engine quando há Activity
+     * (ViewUtils.calculateMaximumDisplayMetrics), e a desta janela nunca tem. No
+     * fluxo normal ela herda o valor que a tela do app deixou; num processo
+     * reerguido sem tela nenhuma ele não existe, e o card do pedido, que se
+     * posiciona pela altura da tela, subia para o topo.
+     */
+    private void informaTamanhoDaTela(FlutterEngine engine) {
+        try {
+            WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+            float largura;
+            float altura;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.graphics.Rect bounds = wm.getMaximumWindowMetrics().getBounds();
+                largura = bounds.width();
+                altura = bounds.height();
+            } else {
+                DisplayMetrics metrics = new DisplayMetrics();
+                wm.getDefaultDisplay().getRealMetrics(metrics);
+                largura = metrics.widthPixels;
+                altura = metrics.heightPixels;
+            }
+            engine.updateDisplayMetrics(largura, altura, getResources().getDisplayMetrics().density);
+        } catch (Exception e) {
+            Log.w("OverlayService", "⚠️ Não foi possível informar o tamanho da tela: " + e.getMessage());
+        }
+    }
+
+    boolean hasWindow() {
+        return flutterView != null;
     }
 
     void showWindowFromKeepAlive(String motivo) {

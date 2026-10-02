@@ -304,6 +304,9 @@ public class FlutterOverlayWindowPlugin implements
         } else if (call.method.equals("restoreService")) {
             restoreService(call, result);
             return;
+        } else if (call.method.equals("isAppAlive")) {
+            result.success(KeepAlive.appAlive());
+            return;
         } else if (call.method.equals("isServiceRunning")) {
             result.success(OverlayService.serviceAlive);
             return;
