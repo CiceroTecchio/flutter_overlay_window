@@ -900,13 +900,13 @@ public class OverlayService extends Service implements View.OnTouchListener {
     private void resizeOverlay(int width, int height, boolean enableDrag, MethodChannel.Result result) {
         if (windowManager != null && flutterView != null) {
             try {
-                // ✅ Surface State Validation
+                // Surface "inválida" não é motivo para pular: o updateViewLayout de uma
+                // view desanexada cai no catch abaixo, e pular deixava o card do pedido
+                // espremido na janelinha sem o Dart saber por quê.
                 if (!isSurfaceValid()) {
-                    Log.w("OverlayService", "⚠️ Surface not valid, skipping resize");
-                    if (result != null) result.success(false);
-                    return;
+                    Log.w("OverlayService", "⚠️ Surface não confere no resize (" + describeSurface() + "), aplicando mesmo assim");
                 }
-                
+
                 WindowManager.LayoutParams params = (WindowManager.LayoutParams) flutterView.getLayoutParams();
                 params.width = (width == -1999 || width == -1) ? -1 : dpToPx(width);
                 params.height = (height == -1999 || height == -1) ? -1 : dpToPx(height);
@@ -938,11 +938,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         if (instance != null && instance.flutterView != null) {
             if (instance.windowManager != null) {
                 if (!instance.isSurfaceValid()) {
-                    Log.w("OverlayService", "⚠️ moveOverlay: surface not valid, skipping");
-                    if (result != null) {
-                        result.success(false);
-                    }
-                    return false;
+                    Log.w("OverlayService", "⚠️ Surface não confere no move (" + instance.describeSurface() + "), aplicando mesmo assim");
                 }
                 try {
                     WindowManager.LayoutParams params = (WindowManager.LayoutParams) instance.flutterView.getLayoutParams();
@@ -1510,6 +1506,19 @@ public class OverlayService extends Service implements View.OnTouchListener {
     }
 
     // ✅ Surface State Validation - View-based (no internal surface APIs)
+    private String describeSurface() {
+        try {
+            if (flutterView == null) return "flutterView=null";
+            return "attached=" + (Build.VERSION.SDK_INT < 19 || flutterView.isAttachedToWindow())
+                    + " token=" + (flutterView.getWindowToken() != null)
+                    + " size=" + flutterView.getWidth() + "x" + flutterView.getHeight()
+                    + " shown=" + flutterView.isShown()
+                    + " visibility=" + flutterView.getVisibility();
+        } catch (Exception e) {
+            return "erro=" + e.getMessage();
+        }
+    }
+
     private boolean isSurfaceValid() {
         try {
             if (flutterView == null) {
