@@ -32,6 +32,9 @@ public class LockScreenOverlayActivity extends Activity {
     private BasicMessageChannel<Object> overlayMessageChannel;
     private Resources resources;
     public static boolean isRunning = false;
+    static volatile LockScreenOverlayActivity instancia;
+    private boolean saiuPorAcaoDoUsuario = false;
+    private int[] tamanhoPedido;
     private BroadcastReceiver closeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -94,6 +97,7 @@ public class LockScreenOverlayActivity extends Activity {
             }
 
         isRunning = true;
+        instancia = this;
         Log.d("LockScreenOverlay", "✅ LockScreenOverlayActivity marcado como running");
         flutterChannel = new MethodChannel(flutterEngine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
         overlayMessageChannel = new BasicMessageChannel<>(flutterEngine.getDartExecutor(), OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
@@ -103,6 +107,16 @@ public class LockScreenOverlayActivity extends Activity {
                 finish();
                 isRunning = false;
                 result.success(true);
+            } else if ("resizeOverlay".equals(call.method)) {
+                // O card cresce com o conteúdo (mais paradas, fonte grande) e o
+                // Dart pede a altura nova por aqui — sem isto a view ficava nos
+                // 450dp do intent e o card rolava por dentro.
+                Integer w = call.argument("width");
+                Integer h = call.argument("height");
+                result.success(resizeFlutterView(w == null ? -1 : w, h == null ? -1 : h));
+            } else if ("updateOverlayPosition".equals(call.method)) {
+                // A view é centralizada na Activity; posição não se aplica aqui.
+                result.success(false);
             } else {
                 result.notImplemented();
             }
@@ -115,6 +129,11 @@ public class LockScreenOverlayActivity extends Activity {
         Intent intent = getIntent();
         int width = intent.getIntExtra("width", 300);
         int height = intent.getIntExtra("height", 300);
+        int[] medido = OverlayService.ultimoResizeDp;
+        if (medido != null) {
+            width = medido[0];
+            height = medido[1];
+        }
         Log.d("LockScreenOverlay", "📐 Dimensões recebidas - Width: " + width + ", Height: " + height);
 
        
@@ -142,7 +161,10 @@ public class LockScreenOverlayActivity extends Activity {
             long creationTime = System.currentTimeMillis() - startTime;
             Log.i("LockScreenOverlay", "✅ FlutterView criada em " + creationTime + "ms");
 
-            FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(pxWidth, pxHeight);
+            int[] pedido = tamanhoPedido;
+            FrameLayout.LayoutParams layoutParams = pedido != null
+                    ? new FrameLayout.LayoutParams(pedido[0], pedido[1])
+                    : new FrameLayout.LayoutParams(pxWidth, pxHeight);
             layoutParams.gravity = Gravity.CENTER;
 
             FrameLayout root = new FrameLayout(this);
@@ -153,13 +175,43 @@ public class LockScreenOverlayActivity extends Activity {
             Log.d("LockScreenOverlay", "📱 FlutterView adicionada ao layout");
 
             setContentView(root);
+            aplicaTamanhoPedido();
             Log.i("LockScreenOverlay", "✅ LockScreenOverlayActivity configurada com sucesso");
         });
+    }
+
+    // Home na tela bloqueada: a Activity ia para o fundo, com o card tocando
+    // dentro dela e nada na tela. Encerrada, o onDestroy avisa o Dart (origem
+    // lockscreen), que leva o card para a janela do serviço.
+    // O onUserLeaveHint sozinho não serve de sinal: lançada com a tela apagada
+    // (turnScreenOn) ele dispara ~150ms depois do onCreate sem ninguém apertar
+    // nada, seguido de onPause e onResume. O Home de verdade chega ao onStop;
+    // o espúrio não. Apagar a tela chega ao onStop sem o hint.
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        saiuPorAcaoDoUsuario = true;
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        saiuPorAcaoDoUsuario = false;
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (saiuPorAcaoDoUsuario && !isFinishing()) {
+            Log.i("LockScreenOverlay", "🏠 Home com o card na tela bloqueada, encerrando a Activity");
+            finish();
+        }
     }
 
     @Override
     public void onDestroy() {
         Log.i("LockScreenOverlay", "🗑️ onDestroy() - Iniciando destruição do LockScreenOverlayActivity");
+        if (instancia == this) instancia = null;
         
         super.onDestroy();
         Log.d("LockScreenOverlay", "📡 Desregistrando closeReceiver");
@@ -169,7 +221,11 @@ public class LockScreenOverlayActivity extends Activity {
             FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
             if (engine != null && engine.getDartExecutor() != null) {
                 Log.d("LockScreenOverlay", "📞 Chamando onOverlayClosed no Flutter");
-                new MethodChannel(engine.getDartExecutor(), "my_custom_overlay_channel").invokeMethod("onOverlayClosed", null);
+                // A origem importa: fechada pelo Home com o pedido ainda tocando, o
+                // Dart precisa levar o card para a janela do serviço, não calar.
+                java.util.Map<String, Object> args = new java.util.HashMap<>();
+                args.put("origem", "lockscreen");
+                new MethodChannel(engine.getDartExecutor(), "my_custom_overlay_channel").invokeMethod("onOverlayClosed", args);
             } else {
                 Log.w("LockScreenOverlay", "⚠️ FlutterEngine ou DartExecutor nulo, não foi possível chamar onOverlayClosed");
             }
@@ -184,9 +240,47 @@ public class LockScreenOverlayActivity extends Activity {
             flutterView = null;
             OverlayService.reclaimSurface();
         }
+        // Os canais são da engine, não desta Activity: sem devolvê-los o serviço
+        // ficava com o handler de uma Activity morta pelo resto do turno.
+        OverlayService.reclaimChannels();
 
         isRunning = false;
         Log.i("LockScreenOverlay", "✅ LockScreenOverlayActivity destruída com sucesso");
+    }
+
+    // O resize chega a qualquer momento: antes da view existir, com ela criada e
+    // ainda fora do layout, ou depois. Guardar o último pedido e aplicá-lo nos
+    // dois pontos (criação e aqui) é o que impede o card de ficar na altura do
+    // intent, cortando os botões de aceitar/recusar.
+    private boolean resizeFlutterView(int width, int height) {
+        if (isFinishing() || isDestroyed()) return false;
+        final int pxWidth = (width == -1999 || width == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(width);
+        final int pxHeight = (height == -1999 || height == -1) ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(height);
+        tamanhoPedido = new int[]{pxWidth, pxHeight};
+        Log.d("LockScreenOverlay", "📐 resize pedido: " + width + "x" + height + " (view=" + (flutterView != null) + ")");
+        new Handler(getMainLooper()).post(this::aplicaTamanhoPedido);
+        return true;
+    }
+
+    private void aplicaTamanhoPedido() {
+        final FlutterView view = flutterView;
+        final int[] pedido = tamanhoPedido;
+        if (view == null || pedido == null) return;
+        try {
+            ViewGroup.LayoutParams params = view.getLayoutParams();
+            if (params == null) return;
+            if (params.width == pedido[0] && params.height == pedido[1]) return;
+            params.width = pedido[0];
+            params.height = pedido[1];
+            view.setLayoutParams(params);
+            Log.d("LockScreenOverlay", "📐 resize aplicado: " + pedido[0] + "x" + pedido[1] + "px");
+        } catch (Exception e) {
+            Log.e("LockScreenOverlay", "❌ Erro ao redimensionar a FlutterView: " + e.getMessage());
+        }
+    }
+
+    void redimensiona(int width, int height) {
+        resizeFlutterView(width, height);
     }
 
     private int dpToPx(int dp) {

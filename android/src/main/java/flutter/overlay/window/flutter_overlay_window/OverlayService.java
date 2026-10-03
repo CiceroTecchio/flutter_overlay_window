@@ -613,71 +613,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
         informaTamanhoDaTela(engine);
         
         Log.d("OverlayService", "♻️ Reutilizando FlutterEngine do onCreate()");
-        if (flutterChannel == null && engine != null && engine.getDartExecutor() != null) {
-            try {
-                
-                flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
-                flutterChannel.setMethodCallHandler((call, result) -> {
-                    try {
-                        // ✅ Verificar se o service ainda está rodando
-                        if (!isRunning) {
-                            Log.w("OverlayService", "⚠️ Service não está rodando, ignorando chamada: " + call.method);
-                            result.error("SERVICE_NOT_RUNNING", "Service is not running", null);
-                            return;
-                        }
-                        
-                        switch (call.method) {
-                            case "updateFlag":
-                                String flag = call.argument("flag");
-                                updateOverlayFlag(result, flag);
-                                break;
-                            case "updateOverlayPosition":
-                                int x = call.argument("x");
-                                int y = call.argument("y");
-                                moveOverlayInternal(x, y, result);
-                                break;
-                            case "resizeOverlay":
-                                int width = call.argument("width");
-                                int height = call.argument("height");
-                                boolean enableDrag = call.argument("enableDrag");
-                                resizeOverlay(width, height, enableDrag, result);
-                                break;
-                            default:
-                                result.notImplemented();
-                        }
-                    } catch (Exception e) {
-                        Log.e("OverlayService", "❌ Error in method call handler: " + e.getMessage(), e);
-                        result.error("METHOD_CALL_ERROR", "Error handling method call", e.getMessage());
-                    }
-                });
-            } catch (Exception e) {
-                Log.e("OverlayService", "❌ Error creating MethodChannel: " + e.getMessage(), e);
-            }
-        }
-
-        if (overlayMessageChannel == null && engine != null && engine.getDartExecutor() != null) {
-            try {
-                
-                overlayMessageChannel = new BasicMessageChannel<>(engine.getDartExecutor(),
-                        OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
-                overlayMessageChannel.setMessageHandler((message, reply) -> {
-                    try {
-                        // ✅ Verificar se o service ainda está rodando
-                        if (!isRunning) {
-                            Log.w("OverlayService", "⚠️ Service não está rodando, ignorando mensagem");
-                            reply.reply(null);
-                            return;
-                        }
-                        
-                        WindowSetup.sendMessage(message);
-                    } catch (Exception e) {
-                        Log.e("OverlayService", "❌ Error in message handler: " + e.getMessage(), e);
-                    }
-                });
-            } catch (Exception e) {
-                Log.e("OverlayService", "❌ Error creating BasicMessageChannel: " + e.getMessage(), e);
-            }
-        }
+        registraCanais(engine);
 
 
             if (flutterView != null) {
@@ -777,6 +713,86 @@ public class OverlayService extends Service implements View.OnTouchListener {
                 windowManager = null;
                 isRunning = false;
             }
+    }
+
+    /**
+     * Sempre reinstala os handlers, e não só na primeira vez: a
+     * LockScreenOverlayActivity registra os dela nos MESMOS canais da engine e, ao
+     * morrer, deixava o canal apontando para uma Activity destruída. Com a engine
+     * vivendo o turno inteiro (manter vivo), depois da primeira tela bloqueada todo
+     * resizeOverlay do Dart caía em notImplemented e o card do pedido ficava
+     * espremido na janelinha.
+     */
+    void registraCanais(FlutterEngine engine) {
+        if (engine == null || engine.getDartExecutor() == null) return;
+        try {
+            if (flutterChannel == null) {
+                flutterChannel = new MethodChannel(engine.getDartExecutor(), OverlayConstants.OVERLAY_TAG);
+            }
+            flutterChannel.setMethodCallHandler((call, result) -> {
+                try {
+                    if (!isRunning) {
+                        Log.w("OverlayService", "⚠️ Service não está rodando, ignorando chamada: " + call.method);
+                        result.error("SERVICE_NOT_RUNNING", "Service is not running", null);
+                        return;
+                    }
+                    switch (call.method) {
+                        case "updateFlag":
+                            String flag = call.argument("flag");
+                            updateOverlayFlag(result, flag);
+                            break;
+                        case "updateOverlayPosition":
+                            int x = call.argument("x");
+                            int y = call.argument("y");
+                            moveOverlayInternal(x, y, result);
+                            break;
+                        case "resizeOverlay":
+                            int width = call.argument("width");
+                            int height = call.argument("height");
+                            boolean enableDrag = call.argument("enableDrag");
+                            resizeOverlay(width, height, enableDrag, result);
+                            break;
+                        default:
+                            result.notImplemented();
+                    }
+                } catch (Exception e) {
+                    Log.e("OverlayService", "❌ Error in method call handler: " + e.getMessage(), e);
+                    result.error("METHOD_CALL_ERROR", "Error handling method call", e.getMessage());
+                }
+            });
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error creating MethodChannel: " + e.getMessage(), e);
+        }
+        try {
+            if (overlayMessageChannel == null) {
+                overlayMessageChannel = new BasicMessageChannel<>(engine.getDartExecutor(),
+                        OverlayConstants.MESSENGER_TAG, JSONMessageCodec.INSTANCE);
+            }
+            overlayMessageChannel.setMessageHandler((message, reply) -> {
+                try {
+                    if (!isRunning) {
+                        Log.w("OverlayService", "⚠️ Service não está rodando, ignorando mensagem");
+                        reply.reply(null);
+                        return;
+                    }
+                    WindowSetup.sendMessage(message);
+                } catch (Exception e) {
+                    Log.e("OverlayService", "❌ Error in message handler: " + e.getMessage(), e);
+                }
+            });
+        } catch (Exception e) {
+            Log.e("OverlayService", "❌ Error creating BasicMessageChannel: " + e.getMessage(), e);
+        }
+    }
+
+    /** Chamado pela LockScreenOverlayActivity ao morrer: devolve os canais ao serviço. */
+    static void reclaimChannels() {
+        OverlayService service = instance;
+        if (service == null) return;
+        FlutterEngine engine = FlutterEngineCache.getInstance().get(OverlayConstants.CACHED_TAG);
+        if (engine == null) return;
+        Log.d("OverlayService", "🔌 Retomando os canais da engine após LockScreenOverlayActivity");
+        service.registraCanais(engine);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
@@ -897,7 +913,20 @@ public class OverlayService extends Service implements View.OnTouchListener {
         }
     }
 
+    // Lido pela LockScreenOverlayActivity ao nascer: o card mede a altura dele
+    // na janela do serviço, às vezes antes de a activity existir, e ela nasceria
+    // com a altura antiga do intent (botões cortados).
+    static volatile int[] ultimoResizeDp;
+
     private void resizeOverlay(int width, int height, boolean enableDrag, MethodChannel.Result result) {
+        ultimoResizeDp = new int[]{width, height};
+        // O handler do canal é escolhido quando a mensagem chega, não quando roda:
+        // um resize que chegou antes do onCreate da tela bloqueada cai aqui depois
+        // dela de pé, e mexeria só na janela escondida atrás dela.
+        LockScreenOverlayActivity telaBloqueada = LockScreenOverlayActivity.instancia;
+        if (telaBloqueada != null) {
+            telaBloqueada.redimensiona(width, height);
+        }
         if (windowManager != null && flutterView != null) {
             try {
                 // Surface "inválida" não é motivo para pular: o updateViewLayout de uma
@@ -1104,9 +1133,7 @@ public class OverlayService extends Service implements View.OnTouchListener {
             
             
             try {
-                // Força disable do Impeller no engine do overlay — o manifest sozinho
-                // não é honrado quando o engine é criado fora do FlutterActivity
-                FlutterEngineGroup engineGroup = new FlutterEngineGroup(this, new String[]{"--enable-impeller=false"});
+                FlutterEngineGroup engineGroup = new FlutterEngineGroup(this);
                 DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(
                         FlutterInjector.instance().flutterLoader().findAppBundlePath(),
                         "overlayMain");
